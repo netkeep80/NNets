@@ -9,9 +9,13 @@ This repository contains a C++ implementation of a self-structuring neural netwo
 ## Features
 
 • Dynamic Structure: The network automatically grows its architecture by adding neurons and connections based on learning requirements.
+
 • Error-Driven Learning: Training is guided by the minimization of the error vector's length, which represents the difference between the network's output and the desired target values.
+
 • Iterative Training: The training process consists of three distinct phases, each contributing to the network's learning.
+
 • C++ Implementation: The project is written in C++, providing performance and control over the underlying data structures.
+
 • Extensible Design: The code is structured to allow users to customize the neuron operations, learning algorithms, and data representations.
 
 ## Usage
