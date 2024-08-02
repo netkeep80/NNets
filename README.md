@@ -24,7 +24,7 @@ This repository contains a C++ implementation of a self-structuring neural netwo
 2. Compile:
 
 • Navigate to the project directory.
-• Compile the code using a command like: g++ -o NNets NNets.cpp
+• Compile the code using a command like: g++ -o NNets main.cpp
 
 3. Run:
 
