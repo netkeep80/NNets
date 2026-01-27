@@ -16,6 +16,7 @@
 #include <strstream>
 #include <math.h>
 #include <string.h>
+#include <cmath>
 
 using namespace std;
 
@@ -924,8 +925,10 @@ void	main()
 		for (int out = 0; out < Classes; out++)
 		{
 			float z1 = GetNeironVal(NetOutput[out])*100.0f;
-			if (z1 < 0.0) z1 = 0.;
-			if (z1 > 100.0) z1 = 100.0f;
+			// Handle NaN and infinite values that cause incorrect percentage display
+			if (!std::isfinite(z1)) z1 = 0.0f;
+			if (z1 < 0.0f) z1 = 0.0f;
+			if (z1 > 100.0f) z1 = 100.0f;
 			cout << long(z1) << "%" << " - " << const_words[out].word << endl; // расчет результата
 		}
 
