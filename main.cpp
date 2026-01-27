@@ -15,9 +15,16 @@
 #include <math.h>
 #include <string.h>
 #include <cmath>
+#include <ctime>
+#include <cstdlib>
 #include <vector>
 #include <string>
 #include <chrono>
+#include <thread>
+#include <mutex>
+#include <atomic>
+#include <algorithm>
+#include <numeric>
 #include <nlohmann/json.hpp>
 
 using namespace std;
@@ -44,6 +51,10 @@ vector<Image> const_words;                        // Обучающие обра
 // ============================================================================
 // Константы и параметры обучения
 // ============================================================================
+
+// Параметры многопоточности
+int NumThreads = 0;                               // Количество потоков (0 = авто)
+bool UseMultithreading = true;                    // Флаг использования многопоточности
 
 const int rod2_iter = 2;                          // Итерации метода rod2
 const int rndrod_iter = 10;                       // Итерации случайного поиска
@@ -210,6 +221,10 @@ void printUsage(const char* programName) {
 	cout << "  -l, --load <file>    Load trained network from JSON file (inference mode)" << endl;
 	cout << "  -i, --input <text>   Classify single input text and exit (non-interactive)" << endl;
 	cout << endl;
+	cout << "PERFORMANCE OPTIONS:" << endl;
+	cout << "  -j, --threads <n>    Number of threads to use (0 = auto, default)" << endl;
+	cout << "  --single-thread      Disable multithreading (use single thread)" << endl;
+	cout << endl;
 	cout << "GENERAL OPTIONS:" << endl;
 	cout << "  -h, --help           Show this help message" << endl;
 	cout << endl;
@@ -336,6 +351,10 @@ int main(int argc, char* argv[])
 			testMode = true;
 		} else if (arg == "-b" || arg == "--benchmark") {
 			benchmarkMode = true;
+		} else if ((arg == "-j" || arg == "--threads") && i + 1 < argc) {
+			NumThreads = atoi(argv[++i]);
+		} else if (arg == "--single-thread") {
+			UseMultithreading = false;
 		} else if (arg == "-h" || arg == "--help") {
 			printUsage(argv[0]);
 			return 0;
@@ -389,6 +408,18 @@ int main(int argc, char* argv[])
 	}
 
 	cout << "Random seed: " << rand() << endl;
+
+	// Настройка многопоточности
+	if (UseMultithreading) {
+		if (NumThreads <= 0) {
+			NumThreads = std::thread::hardware_concurrency();
+			if (NumThreads == 0) NumThreads = 4;  // Значение по умолчанию
+		}
+		cout << "Multithreading: enabled, " << NumThreads << " threads" << endl;
+	} else {
+		NumThreads = 1;
+		cout << "Multithreading: disabled (single-threaded mode)" << endl;
+	}
 
 	// Вычисляем производные значения после загрузки конфигурации
 	Images = const_words.size();
@@ -464,8 +495,8 @@ int main(int argc, char* argv[])
 		// Обучаем распознавание текущего класса
 		if (class_er[classIndex] > er)
 		{
-			// Используем метод rndrod4 - генерация тройки нейронов
-			class_er[classIndex] = rndrod4();
+			// Используем метод rndrod4_parallel - многопоточная генерация тройки нейронов
+			class_er[classIndex] = rndrod4_parallel();
 
 			// Сохраняем выходной нейрон для класса
 			NetOutput[classIndex] = Neirons - 1;
@@ -503,6 +534,7 @@ int main(int argc, char* argv[])
 		cout << "  Classes: " << Classes << endl;
 		cout << "  Images: " << Images << endl;
 		cout << "  Neurons created: " << (Neirons - Inputs) << endl;
+		cout << "  Threads: " << NumThreads << (UseMultithreading ? " (multithreaded)" : " (single-threaded)") << endl;
 		cout << "Timing:" << endl;
 		cout << "  Training time: " << trainingDuration.count() << " ms" << endl;
 		cout << "  Training iterations: " << trainingIterations << endl;
