@@ -182,21 +182,37 @@ void initDefaultConfig(int receptors) {
 // Print usage information
 void printUsage(const char* programName) {
 	cout << "Usage: " << programName << " [options]" << endl;
-	cout << "Options:" << endl;
-	cout << "  -c, --config <file>  Load configuration from JSON file" << endl;
+	cout << endl;
+	cout << "MODES:" << endl;
+	cout << "  Training mode (default): Train network and optionally save to file" << endl;
+	cout << "  Inference mode: Load trained network and classify inputs" << endl;
+	cout << endl;
+	cout << "TRAINING OPTIONS:" << endl;
+	cout << "  -c, --config <file>  Load training configuration from JSON file" << endl;
+	cout << "  -s, --save <file>    Save trained network to JSON file after training" << endl;
 	cout << "  -t, --test           Run automated test after training (no interactive mode)" << endl;
 	cout << "  -b, --benchmark      Run benchmark to measure training speed" << endl;
+	cout << endl;
+	cout << "INFERENCE OPTIONS:" << endl;
+	cout << "  -l, --load <file>    Load trained network from JSON file (inference mode)" << endl;
+	cout << "  -i, --input <text>   Classify single input text and exit (non-interactive)" << endl;
+	cout << endl;
+	cout << "GENERAL OPTIONS:" << endl;
 	cout << "  -h, --help           Show this help message" << endl;
 	cout << endl;
-	cout << "JSON config format:" << endl;
+	cout << "EXAMPLES:" << endl;
+	cout << "  " << programName << " -c configs/default.json -s model.json  # Train and save" << endl;
+	cout << "  " << programName << " -l model.json                          # Interactive inference" << endl;
+	cout << "  " << programName << " -l model.json -i \"time\"                # Single classification" << endl;
+	cout << endl;
+	cout << "JSON config format (training):" << endl;
 	cout << "  {" << endl;
-	cout << "    \"receptors\": 20,  // Number of neural network inputs" << endl;
+	cout << "    \"receptors\": 20," << endl;
 	cout << "    \"classes\": [" << endl;
 	cout << "      { \"id\": 0, \"word\": \"\" }," << endl;
-	cout << "      { \"id\": 1, \"word\": \"time\" }," << endl;
-	cout << "      ..." << endl;
+	cout << "      { \"id\": 1, \"word\": \"time\" }" << endl;
 	cout << "    ]," << endl;
-	cout << "    \"generate_shifts\": true  // Generate position-shifted variants" << endl;
+	cout << "    \"generate_shifts\": true" << endl;
 	cout << "  }" << endl;
 }
 
@@ -310,10 +326,19 @@ oper	op[] = {
 	//op_10,	//	984
 	//op_11,	//	1423
 };
+const int op_count = sizeof(op) / sizeof(oper);
 //oper	op[] = { op_1,op_2,op_3,op_4,op_5,op_6 };
 /*
 953
 */
+
+// Get operation index from function pointer (for serialization)
+int getOpIndex(oper operation) {
+	for (int i = 0; i < op_count; i++) {
+		if (op[i] == operation) return i;
+	}
+	return 0;  // Default to first operation if not found
+}
 //////////////////////////////////////////////////////////////////////////////
 
 /*
@@ -347,6 +372,161 @@ void initNeurons() {
 		nei[n].c.resize(Images);
 		nei[n].cached = false;
 		nei[n].val_cached = false;
+	}
+}
+
+// Save trained neural network to JSON file
+bool saveNetwork(const string& filePath) {
+	try {
+		json network;
+
+		// Store configuration
+		network["receptors"] = Receptors;
+		network["base_size"] = base_size;
+		network["inputs"] = Inputs;
+		network["neurons_count"] = Neirons;
+
+		// Store basis values
+		json basisArray = json::array();
+		for (int i = 0; i < base_size; i++) {
+			basisArray.push_back(base[i]);
+		}
+		network["basis"] = basisArray;
+
+		// Store class names
+		json classesArray = json::array();
+		for (int c = 0; c < Classes; c++) {
+			json cls;
+			cls["id"] = c;
+			cls["name"] = classes[c];
+			cls["output_neuron"] = NetOutput[c];
+			classesArray.push_back(cls);
+		}
+		network["classes"] = classesArray;
+
+		// Store neurons (only the ones above Inputs, since 0..Inputs-1 are inputs)
+		// Neuron IDs are implicit - they are Inputs + array_index
+		json neuronsArray = json::array();
+		for (int n = Inputs; n < Neirons; n++) {
+			json neuron;
+			neuron["i"] = nei[n].i;
+			neuron["j"] = nei[n].j;
+			neuron["op"] = getOpIndex(nei[n].op);
+			neuronsArray.push_back(neuron);
+		}
+		network["neurons"] = neuronsArray;
+
+		// Add metadata
+		network["version"] = "1.0";
+		network["description"] = "Trained neural network model";
+
+		// Write to file with pretty printing
+		ofstream outFile(filePath);
+		if (!outFile.is_open()) {
+			cerr << "Error: Cannot open output file: " << filePath << endl;
+			return false;
+		}
+		outFile << network.dump(2);
+		outFile.close();
+
+		cout << "Network saved to: " << filePath << endl;
+		cout << "  Classes: " << Classes << endl;
+		cout << "  Neurons: " << (Neirons - Inputs) << endl;
+		cout << "  Total nodes: " << Neirons << endl;
+
+		return true;
+	}
+	catch (const exception& e) {
+		cerr << "Error saving network: " << e.what() << endl;
+		return false;
+	}
+}
+
+// Load trained neural network from JSON file (for inference mode)
+bool loadNetwork(const string& filePath) {
+	ifstream inFile(filePath);
+	if (!inFile.is_open()) {
+		cerr << "Error: Cannot open network file: " << filePath << endl;
+		return false;
+	}
+
+	try {
+		json network;
+		inFile >> network;
+
+		// Load configuration
+		Receptors = network["receptors"].get<int>();
+		Inputs = network["inputs"].get<int>();
+		Neirons = network["neurons_count"].get<int>();
+
+		// Verify basis size matches
+		int loadedBaseSize = network["base_size"].get<int>();
+		if (loadedBaseSize != base_size) {
+			cerr << "Warning: Basis size mismatch (file: " << loadedBaseSize
+				 << ", expected: " << base_size << ")" << endl;
+		}
+
+		// Allocate network input array
+		NetInput.resize(Inputs);
+
+		// Set basis values
+		for (int i = 0; i < base_size; i++) {
+			NetInput[i + Receptors] = base[i];
+		}
+
+		// Load classes
+		const auto& classesArray = network["classes"];
+		Classes = classesArray.size();
+		classes.clear();
+		classes.resize(Classes);
+		NetOutput.resize(Classes);
+
+		for (const auto& cls : classesArray) {
+			int id = cls["id"].get<int>();
+			classes[id] = cls["name"].get<string>();
+			NetOutput[id] = cls["output_neuron"].get<int>();
+		}
+
+		// Initialize neurons (without image cache since we don't need training data)
+		nei.resize(MAX_NEURONS);
+		for (int n = 0; n < MAX_NEURONS; n++) {
+			nei[n].cached = false;
+			nei[n].val_cached = false;
+		}
+
+		// Load neuron structure
+		// Neuron IDs are implicit - they are Inputs + array_index
+		const auto& neuronsArray = network["neurons"];
+		int neuronIndex = Inputs;  // Start from Inputs since 0..Inputs-1 are inputs
+		for (const auto& neuron : neuronsArray) {
+			nei[neuronIndex].i = neuron["i"].get<int>();
+			nei[neuronIndex].j = neuron["j"].get<int>();
+			int opIndex = neuron["op"].get<int>();
+			if (opIndex >= 0 && opIndex < op_count) {
+				nei[neuronIndex].op = op[opIndex];
+			} else {
+				nei[neuronIndex].op = op[0];  // Default to first operation
+			}
+			neuronIndex++;
+		}
+
+		cout << "Network loaded from: " << filePath << endl;
+		cout << "  Receptors: " << Receptors << endl;
+		cout << "  Classes: " << Classes << endl;
+		for (int c = 0; c < Classes; c++) {
+			cout << "    " << c << ": " << classes[c] << endl;
+		}
+		cout << "  Neurons: " << (Neirons - Inputs) << endl;
+
+		return true;
+	}
+	catch (const json::exception& e) {
+		cerr << "JSON parsing error: " << e.what() << endl;
+		return false;
+	}
+	catch (const exception& e) {
+		cerr << "Error loading network: " << e.what() << endl;
+		return false;
 	}
 }
 
@@ -427,6 +607,33 @@ void	clear_val_cache(vector<Neiron>& n, const int size)
 	int limit = (size < (int)n.size()) ? size : (int)n.size();
 	for (int i = 0; i < limit; i++)
 		n[i].val_cached = false;
+}
+
+// Perform classification on input text and return results
+void classifyInput(const string& inputText, bool verbose = true) {
+	// Set network input from text
+	for (int d = 0; d < Receptors; d++) {
+		if (d < (int)inputText.length() && inputText[d] != 0) {
+			NetInput[d] = float((unsigned char)inputText[d]) / float(max_num);
+		} else {
+			NetInput[d] = float((unsigned char)' ') / float(max_num);
+		}
+	}
+
+	// Clear value cache
+	clear_val_cache(nei, MAX_NEURONS);
+
+	// Calculate and display results for each class
+	if (verbose) {
+		for (int out = 0; out < Classes; out++) {
+			float z1 = GetNeironVal(NetOutput[out]) * 100.0f;
+			// Handle NaN and infinite values
+			if (!std::isfinite(z1)) z1 = 0.0f;
+			if (z1 < 0.0f) z1 = 0.0f;
+			if (z1 > 100.0f) z1 = 100.0f;
+			cout << long(z1) << "%" << " - " << classes[out] << endl;
+		}
+	}
 }
 
 
@@ -834,12 +1041,24 @@ int	main(int argc, char* argv[])
 {
 	// Parse command line arguments
 	string configPath = "";
+	string savePath = "";
+	string loadPath = "";
+	string inputText = "";
 	bool testMode = false;
 	bool benchmarkMode = false;
+	bool inferenceMode = false;
+
 	for (int i = 1; i < argc; i++) {
 		string arg = argv[i];
 		if ((arg == "-c" || arg == "--config") && i + 1 < argc) {
 			configPath = argv[++i];
+		} else if ((arg == "-s" || arg == "--save") && i + 1 < argc) {
+			savePath = argv[++i];
+		} else if ((arg == "-l" || arg == "--load") && i + 1 < argc) {
+			loadPath = argv[++i];
+			inferenceMode = true;
+		} else if ((arg == "-i" || arg == "--input") && i + 1 < argc) {
+			inputText = argv[++i];
 		} else if (arg == "-t" || arg == "--test") {
 			testMode = true;
 		} else if (arg == "-b" || arg == "--benchmark") {
@@ -849,6 +1068,43 @@ int	main(int argc, char* argv[])
 			return 0;
 		}
 	}
+
+	// ===== INFERENCE MODE =====
+	// If loading a trained network, skip training and go straight to inference
+	if (inferenceMode) {
+		if (!loadNetwork(loadPath)) {
+			return 1;
+		}
+
+		// If single input text provided, classify and exit
+		if (!inputText.empty()) {
+			cout << "\nClassifying: \"" << inputText << "\"" << endl;
+			classifyInput(inputText);
+			return 0;
+		}
+
+		// Otherwise, enter interactive inference mode
+		cout << "\nEntering interactive inference mode..." << endl;
+		cout << "Enter text to classify (or 'Q' to quit):" << endl;
+
+		do {
+			cout << "\ninput word:";
+			if (InputStr[0] == 0) {
+				readkeyboard(InputStr);
+			}
+
+			memset(word_buf, 0, StringSize);
+			strcpy_s(word_buf, InputStr);
+			memset(InputStr, 0, StringSize);
+
+			if (cmp("Q") || cmp("q")) return 0;
+
+			classifyInput(word_buf);
+
+		} while (true);
+	}
+
+	// ===== TRAINING MODE =====
 
 	// Load configuration or use defaults
 	if (!configPath.empty()) {
@@ -989,6 +1245,13 @@ int	main(int argc, char* argv[])
 	cout << "Final errors per class:" << endl;
 	for (int c = 0; c < Classes; c++) {
 		cout << "  Class " << c << " (" << classes[c] << "): error = " << class_er[c] << endl;
+	}
+
+	// Save trained network if requested
+	if (!savePath.empty()) {
+		if (!saveNetwork(savePath)) {
+			cerr << "Warning: Failed to save network to " << savePath << endl;
+		}
 	}
 
 	// Benchmark mode: output training speed metrics
