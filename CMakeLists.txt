@@ -74,3 +74,78 @@ install(DIRECTORY ${CMAKE_SOURCE_DIR}/configs/
     DESTINATION share/NNets/configs
     FILES_MATCHING PATTERN "*.json"
 )
+
+# ============================================================================
+# Testing configuration with CTest
+# ============================================================================
+enable_testing()
+
+# Helper to get the correct executable path
+if(MSVC)
+    set(NNETS_EXE "$<TARGET_FILE:NNets>")
+else()
+    set(NNETS_EXE "$<TARGET_FILE:NNets>")
+endif()
+
+# Test 1: Simple classification test (yes/no)
+# Verifies basic neural network training and classification works
+add_test(
+    NAME test_simple_classification
+    COMMAND NNets -c ${CMAKE_SOURCE_DIR}/configs/simple.json -t
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+set_tests_properties(test_simple_classification PROPERTIES
+    TIMEOUT 120
+    LABELS "classification;quick"
+)
+
+# Test 2: Default configuration test (4 classes)
+# Tests with the original hardcoded configuration
+add_test(
+    NAME test_default_classification
+    COMMAND NNets -c ${CMAKE_SOURCE_DIR}/configs/default.json -t
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+set_tests_properties(test_default_classification PROPERTIES
+    TIMEOUT 300
+    LABELS "classification;standard"
+)
+
+# Test 3: Benchmark test for training speed
+# Measures and reports training performance metrics
+add_test(
+    NAME test_benchmark_training_speed
+    COMMAND NNets -c ${CMAKE_SOURCE_DIR}/configs/benchmark.json -b
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+set_tests_properties(test_benchmark_training_speed PROPERTIES
+    TIMEOUT 300
+    LABELS "benchmark;performance"
+)
+
+# Test 4: Model save and load test
+# Trains a model, saves it, then loads and verifies inference
+add_test(
+    NAME test_model_save_load
+    COMMAND ${CMAKE_COMMAND}
+        -DNNETS_EXE=$<TARGET_FILE:NNets>
+        -DCONFIG_DIR=${CMAKE_SOURCE_DIR}/configs
+        -DWORK_DIR=${CMAKE_BINARY_DIR}
+        -P ${CMAKE_SOURCE_DIR}/cmake/test_save_load.cmake
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+set_tests_properties(test_model_save_load PROPERTIES
+    TIMEOUT 180
+    LABELS "save_load;inference"
+)
+
+# Test 5: Extended classification test (more classes)
+add_test(
+    NAME test_extended_classification
+    COMMAND NNets -c ${CMAKE_SOURCE_DIR}/configs/extended.json -t
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+set_tests_properties(test_extended_classification PROPERTIES
+    TIMEOUT 300
+    LABELS "classification;extended"
+)

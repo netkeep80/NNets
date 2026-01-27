@@ -1,14 +1,12 @@
 {
-    "receptors": 16,
+    "receptors": 12,
     "classes": [
         { "id": 0, "word": "" },
-        { "id": 1, "word": "time" },
-        { "id": 2, "word": "hour" },
-        { "id": 3, "word": "main" },
-        { "id": 4, "word": "need" },
-        { "id": 5, "word": "most" },
-        { "id": 6, "word": "want" }
+        { "id": 1, "word": "cat" },
+        { "id": 2, "word": "dog" },
+        { "id": 3, "word": "bird" },
+        { "id": 4, "word": "fish" }
     ],
     "generate_shifts": true,
-    "description": "Extended configuration with 7 classes including additional words"
+    "description": "Extended configuration with 5 classes for testing multiple word classification"
 }
