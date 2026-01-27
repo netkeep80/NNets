@@ -37,7 +37,8 @@ jobs:
 
     - name: Run Classification Test (Windows)
       if: runner.os == 'Windows'
-      run: .\build\bin\Release\NNets.exe -c configs\simple.json -t
+      shell: cmd
+      run: build\bin\Release\NNets.exe -c configs\simple.json -t
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
