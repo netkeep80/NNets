@@ -40,6 +40,15 @@ jobs:
       shell: cmd
       run: build\Release\NNets.exe -c configs\simple.json -t
 
+    - name: Run Training Speed Benchmark (Linux/macOS)
+      if: runner.os != 'Windows'
+      run: ./build/NNets -c configs/benchmark.json -b
+
+    - name: Run Training Speed Benchmark (Windows)
+      if: runner.os == 'Windows'
+      shell: cmd
+      run: build\Release\NNets.exe -c configs\benchmark.json -b
+
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
