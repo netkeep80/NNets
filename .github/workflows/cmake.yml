@@ -49,6 +49,27 @@ jobs:
       shell: cmd
       run: build\Release\NNets.exe -c configs\benchmark.json -b
 
+    - name: Test Save/Load Network (Linux/macOS)
+      if: runner.os != 'Windows'
+      run: |
+        # Train and save network
+        ./build/NNets -c configs/simple.json -s test_model.json -t
+        # Test inference mode with saved network
+        echo "Testing inference mode..."
+        ./build/NNets -l test_model.json -i "yes" | grep -q "yes"
+        ./build/NNets -l test_model.json -i "no" | grep -q "no"
+        echo "Inference tests passed!"
+
+    - name: Test Save/Load Network (Windows)
+      if: runner.os == 'Windows'
+      shell: cmd
+      run: |
+        build\Release\NNets.exe -c configs\simple.json -s test_model.json -t
+        echo Testing inference mode...
+        build\Release\NNets.exe -l test_model.json -i "yes"
+        build\Release\NNets.exe -l test_model.json -i "no"
+        echo Inference tests passed!
+
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
