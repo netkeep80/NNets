@@ -712,17 +712,19 @@ float rndrod4_parallel() {
     // Каждый поток получает count_max / NumThreads итераций
     // Но общее количество итераций (сумма по всем потокам) равно count_max
     int count_max = Neirons * Receptors * 4;
-    // Каждый поток выполняет count_max / NumThreads итераций
-    // Общее количество итераций (сумма по всем потокам) равно count_max,
-    // что эквивалентно однопоточной версии
-    int iterations_per_thread = (count_max + NumThreads - 1) / NumThreads;
 
-    // Минимум 50 итераций на поток для стабильного качества поиска
-    // При очень малом количестве итераций качество поиска может страдать
-    // из-за недостаточного исследования пространства
-    if (iterations_per_thread < 50) {
-        iterations_per_thread = 50;
+    // Для небольших задач параллелизация может ухудшить качество поиска
+    // из-за независимости траекторий поиска между потоками.
+    // Используем однопоточную версию если workload слишком мал.
+    // Порог 10000 итераций выбран эмпирически для баланса
+    // между скоростью и качеством.
+    if (count_max < 10000) {
+        return rndrod4();
     }
+
+    // Каждый поток выполняет count_max / NumThreads итераций
+    // Общее количество итераций (сумма по всем потокам) равно count_max
+    int iterations_per_thread = (count_max + NumThreads - 1) / NumThreads;
 
     // Создаём результаты для каждого потока
     vector<ThreadSearchResult> results(NumThreads);
@@ -731,7 +733,10 @@ float rndrod4_parallel() {
     std::atomic<float> global_min(big);
 
     // Получаем начальное значение для генераторов случайных чисел
-    unsigned int base_seed = (unsigned int)time(nullptr);
+    // Используем текущее количество нейронов как основу для seed,
+    // что обеспечивает детерминированность при фиксированном srand()
+    // и разные стартовые точки для каждого вызова rndrod4_parallel
+    unsigned int base_seed = (unsigned int)(Neirons * 1099087573u + 12345u);
 
     // Запускаем потоки
     vector<std::thread> threads;
