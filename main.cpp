@@ -788,7 +788,7 @@ float	sum(const float* ar, const int size)
 	return res;
 }
 
-void	main()
+int	main()
 {
 	cout << rand() << endl;
 
@@ -905,7 +905,7 @@ void	main()
 		strcpy_s(word, InputStr);
 		memset(InputStr, 0, StringSize);
 
-		if (cmp("Q") || cmp("q"))	return;
+		if (cmp("Q") || cmp("q"))	return 0;
 
 		for (int d = 0; d < Receptors; d++)
 		{

@@ -14,6 +14,16 @@ packages
 .vs
 *.vcxproj.user
 
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+!CMakeLists.txt
+NNets
+NNets.exe
+
 # Windows image file caches
 Thumbs.db
 ehthumbs.db
