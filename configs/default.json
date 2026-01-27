@@ -1,0 +1,11 @@
+{
+    "receptors": 20,
+    "classes": [
+        { "id": 0, "word": "" },
+        { "id": 1, "word": "time" },
+        { "id": 2, "word": "hour" },
+        { "id": 3, "word": "main" }
+    ],
+    "generate_shifts": true,
+    "description": "Default configuration with 4 classes (empty, time, hour, main) and shift-invariant patterns"
+}

@@ -1,0 +1,14 @@
+{
+    "receptors": 16,
+    "images": [
+        { "word": "                ", "id": 0 },
+        { "word": "time            ", "id": 1 },
+        { "word": "hour            ", "id": 2 },
+        { "word": "main            ", "id": 3 },
+        { "word": " time           ", "id": 1 },
+        { "word": "  time          ", "id": 1 },
+        { "word": "   time         ", "id": 1 },
+        { "word": "    time        ", "id": 1 }
+    ],
+    "description": "Custom images configuration - manually defined training patterns without automatic generation"
+}

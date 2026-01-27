@@ -1,0 +1,10 @@
+{
+    "receptors": 12,
+    "classes": [
+        { "id": 0, "word": "" },
+        { "id": 1, "word": "yes" },
+        { "id": 2, "word": "no" }
+    ],
+    "generate_shifts": true,
+    "description": "Simple configuration for binary yes/no classification"
+}
