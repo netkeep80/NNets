@@ -19,6 +19,7 @@
 #include <cmath>
 #include <vector>
 #include <string>
+#include <chrono>
 #include <nlohmann/json.hpp>
 
 using namespace std;
@@ -184,6 +185,7 @@ void printUsage(const char* programName) {
 	cout << "Options:" << endl;
 	cout << "  -c, --config <file>  Load configuration from JSON file" << endl;
 	cout << "  -t, --test           Run automated test after training (no interactive mode)" << endl;
+	cout << "  -b, --benchmark      Run benchmark to measure training speed" << endl;
 	cout << "  -h, --help           Show this help message" << endl;
 	cout << endl;
 	cout << "JSON config format:" << endl;
@@ -833,12 +835,15 @@ int	main(int argc, char* argv[])
 	// Parse command line arguments
 	string configPath = "";
 	bool testMode = false;
+	bool benchmarkMode = false;
 	for (int i = 1; i < argc; i++) {
 		string arg = argv[i];
 		if ((arg == "-c" || arg == "--config") && i + 1 < argc) {
 			configPath = argv[++i];
 		} else if (arg == "-t" || arg == "--test") {
 			testMode = true;
+		} else if (arg == "-b" || arg == "--benchmark") {
+			benchmarkMode = true;
 		} else if (arg == "-h" || arg == "--help") {
 			printUsage(argv[0]);
 			return 0;
@@ -907,8 +912,13 @@ int	main(int argc, char* argv[])
 
 	//rndrod0(Inputs*Receptors);
 
+	// Start training timer for benchmark
+	auto trainingStartTime = chrono::high_resolution_clock::now();
+	int trainingIterations = 0;
+
 	do
 	{
+		trainingIterations++;
 		cout << "train class:" << classes[classIndex] << " (id=" << classIndex << ")";
 
 		// Set expected output vector: 1.0 for images of current class, 0.0 for others
@@ -971,10 +981,41 @@ int	main(int argc, char* argv[])
 
 	} while (sum(class_er.data(), Classes) > Classes * er);
 
+	// End training timer
+	auto trainingEndTime = chrono::high_resolution_clock::now();
+	auto trainingDuration = chrono::duration_cast<chrono::milliseconds>(trainingEndTime - trainingStartTime);
+
 	cout << "\nTraining completed!" << endl;
 	cout << "Final errors per class:" << endl;
 	for (int c = 0; c < Classes; c++) {
 		cout << "  Class " << c << " (" << classes[c] << "): error = " << class_er[c] << endl;
+	}
+
+	// Benchmark mode: output training speed metrics
+	if (benchmarkMode) {
+		cout << "\n=== Training Speed Benchmark Results ===" << endl;
+		cout << "Configuration:" << endl;
+		cout << "  Receptors (inputs): " << Receptors << endl;
+		cout << "  Classes: " << Classes << endl;
+		cout << "  Images: " << Images << endl;
+		cout << "  Neurons created: " << (Neirons - Inputs) << endl;
+		cout << "Timing:" << endl;
+		cout << "  Training time: " << trainingDuration.count() << " ms" << endl;
+		cout << "  Training iterations: " << trainingIterations << endl;
+		if (trainingIterations > 0) {
+			double msPerIteration = (double)trainingDuration.count() / trainingIterations;
+			cout << "  Time per iteration: " << msPerIteration << " ms" << endl;
+		}
+		if (trainingDuration.count() > 0) {
+			double classesPerSecond = (double)Classes * 1000.0 / trainingDuration.count();
+			cout << "  Training speed: " << classesPerSecond << " classes/sec" << endl;
+			double neuronsPerSecond = (double)(Neirons - Inputs) * 1000.0 / trainingDuration.count();
+			cout << "  Neuron creation speed: " << neuronsPerSecond << " neurons/sec" << endl;
+		}
+		cout << "=== End Benchmark ===" << endl;
+
+		// In benchmark mode, return success unless there was an error
+		return 0;
 	}
 
 	// Test mode: validate classification accuracy and exit

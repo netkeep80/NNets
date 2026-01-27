@@ -1,0 +1,12 @@
+{
+    "receptors": 16,
+    "classes": [
+        { "id": 0, "word": "" },
+        { "id": 1, "word": "apple" },
+        { "id": 2, "word": "banana" },
+        { "id": 3, "word": "cherry" },
+        { "id": 4, "word": "date" }
+    ],
+    "generate_shifts": true,
+    "description": "Benchmark configuration for measuring training speed - 5 classes with 16 receptors"
+}
