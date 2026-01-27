@@ -46,7 +46,7 @@ g++ -o NNets main.cpp
 
 ## Usage
 
-The program supports two main modes: **Training** and **Inference**.
+The program supports several modes: **Training**, **Retraining**, **Inference**, and **Verification**.
 
 ### Command Line Options
 
@@ -56,6 +56,7 @@ Usage: ./NNets [options]
 MODES:
   Training mode (default): Train network and optionally save to file
   Inference mode: Load trained network and classify inputs
+  Retraining mode: Load existing network and continue training with new data
 
 TRAINING OPTIONS:
   -c, --config <file>  Load training configuration from JSON file
@@ -63,12 +64,27 @@ TRAINING OPTIONS:
   -t, --test           Run automated test after training (no interactive mode)
   -b, --benchmark      Run benchmark to measure training speed
 
+RETRAINING OPTIONS:
+  -r, --retrain <file> Load existing network and continue training (retraining mode)
+                       Combines -l (load) with training mode. Requires -c for new data.
+                       New classes in config (without output_neuron) will be trained.
+
 INFERENCE OPTIONS:
   -l, --load <file>    Load trained network from JSON file (inference mode)
   -i, --input <text>   Classify single input text and exit (non-interactive)
+  --verify             Verify accuracy of loaded model on training config (-c required)
+
+PERFORMANCE OPTIONS:
+  -j, --threads <n>    Number of threads to use (0 = auto, default)
+  --single-thread      Disable multithreading (use single thread)
 
 GENERAL OPTIONS:
   -h, --help           Show help message
+
+INTERRUPTION:
+  Press Ctrl+C during training to interrupt gracefully.
+  The network will be saved if -s is specified.
+  Training can be continued later with -r option.
 ```
 
 ### Training Mode
@@ -103,6 +119,55 @@ Load a pre-trained network and classify inputs:
 # Classify a single text (non-interactive, for scripts/tests)
 ./NNets -l model.json -i "time"
 ./NNets -l model.json -i "yes"
+```
+
+### Retraining Mode
+
+Continue training an existing network with new classes or additional training data:
+
+```bash
+# Add new classes to an existing model
+# 1. First, train initial model with classes yes/no
+./NNets -c configs/simple.json -s model_v1.json
+
+# 2. Create a new config with additional classes (e.g., adding "maybe")
+# 3. Retrain the model with new data
+./NNets -r model_v1.json -c configs/extended.json -s model_v2.json
+```
+
+Retraining automatically detects which classes are already trained (have `output_neuron`) and only trains new classes. This is useful for:
+- Adding new recognition classes without retraining from scratch
+- Continuing interrupted training sessions
+- Incrementally improving the model
+
+### Verification Mode
+
+Check the accuracy of a trained model on test data:
+
+```bash
+# Verify model accuracy on training data
+./NNets -l model.json -c configs/test.json --verify
+```
+
+This mode loads the trained network and tests it against all samples in the configuration file, reporting accuracy statistics.
+
+### Training Interruption
+
+Training can be interrupted at any time by pressing Ctrl+C:
+- The first Ctrl+C requests graceful interruption (finishes current iteration)
+- The second Ctrl+C forces immediate exit
+- If `-s` option is specified, the network state is saved automatically
+- Training can be continued later using the `-r` (retrain) option
+
+```bash
+# Start long training with auto-save
+./NNets -c configs/large.json -s checkpoint.json
+
+# Press Ctrl+C to interrupt...
+# Network saved to checkpoint.json
+
+# Continue training later
+./NNets -r checkpoint.json -c configs/large.json -s final_model.json
 ```
 
 ### Training Configuration Format
