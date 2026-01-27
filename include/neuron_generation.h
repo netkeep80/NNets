@@ -712,8 +712,17 @@ float rndrod4_parallel() {
     // Каждый поток получает count_max / NumThreads итераций
     // Но общее количество итераций (сумма по всем потокам) равно count_max
     int count_max = Neirons * Receptors * 4;
-    int iterations_per_thread = (count_max + NumThreads - 1) / NumThreads;  // Округление вверх
-    if (iterations_per_thread < 10) iterations_per_thread = 10;  // Минимум итераций на поток
+    // Каждый поток выполняет count_max / NumThreads итераций
+    // Общее количество итераций (сумма по всем потокам) равно count_max,
+    // что эквивалентно однопоточной версии
+    int iterations_per_thread = (count_max + NumThreads - 1) / NumThreads;
+
+    // Минимум 50 итераций на поток для стабильного качества поиска
+    // При очень малом количестве итераций качество поиска может страдать
+    // из-за недостаточного исследования пространства
+    if (iterations_per_thread < 50) {
+        iterations_per_thread = 50;
+    }
 
     // Создаём результаты для каждого потока
     vector<ThreadSearchResult> results(NumThreads);
