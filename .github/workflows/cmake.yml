@@ -31,6 +31,14 @@ jobs:
     - name: Build
       run: cmake --build build --config Release
 
+    - name: Run Classification Test (Linux/macOS)
+      if: runner.os != 'Windows'
+      run: ./build/NNets -c configs/simple.json -t
+
+    - name: Run Classification Test (Windows)
+      if: runner.os == 'Windows'
+      run: .\build\bin\Release\NNets.exe -c configs\simple.json -t
+
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
