@@ -405,10 +405,10 @@ bool saveNetwork(const string& filePath) {
 		network["classes"] = classesArray;
 
 		// Store neurons (only the ones above Inputs, since 0..Inputs-1 are inputs)
+		// Neuron IDs are implicit - they are Inputs + array_index
 		json neuronsArray = json::array();
 		for (int n = Inputs; n < Neirons; n++) {
 			json neuron;
-			neuron["id"] = n;
 			neuron["i"] = nei[n].i;
 			neuron["j"] = nei[n].j;
 			neuron["op"] = getOpIndex(nei[n].op);
@@ -495,17 +495,19 @@ bool loadNetwork(const string& filePath) {
 		}
 
 		// Load neuron structure
+		// Neuron IDs are implicit - they are Inputs + array_index
 		const auto& neuronsArray = network["neurons"];
+		int neuronIndex = Inputs;  // Start from Inputs since 0..Inputs-1 are inputs
 		for (const auto& neuron : neuronsArray) {
-			int id = neuron["id"].get<int>();
-			nei[id].i = neuron["i"].get<int>();
-			nei[id].j = neuron["j"].get<int>();
+			nei[neuronIndex].i = neuron["i"].get<int>();
+			nei[neuronIndex].j = neuron["j"].get<int>();
 			int opIndex = neuron["op"].get<int>();
 			if (opIndex >= 0 && opIndex < op_count) {
-				nei[id].op = op[opIndex];
+				nei[neuronIndex].op = op[opIndex];
 			} else {
-				nei[id].op = op[0];  // Default to first operation
+				nei[neuronIndex].op = op[0];  // Default to first operation
 			}
+			neuronIndex++;
 		}
 
 		cout << "Network loaded from: " << filePath << endl;

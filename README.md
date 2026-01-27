@@ -46,13 +46,131 @@ g++ -o NNets main.cpp
 
 ## Usage
 
-1. Run the compiled binary: `./NNets` (Linux/macOS) or `NNets.exe` (Windows)
-2. The program will prompt you to enter words.
+The program supports two main modes: **Training** and **Inference**.
 
-4. Training:
+### Command Line Options
 
-• The network is automatically trained on a given set of words.
-• The training process may take some time depending on the complexity of the data.
+```
+Usage: ./NNets [options]
+
+MODES:
+  Training mode (default): Train network and optionally save to file
+  Inference mode: Load trained network and classify inputs
+
+TRAINING OPTIONS:
+  -c, --config <file>  Load training configuration from JSON file
+  -s, --save <file>    Save trained network to JSON file after training
+  -t, --test           Run automated test after training (no interactive mode)
+  -b, --benchmark      Run benchmark to measure training speed
+
+INFERENCE OPTIONS:
+  -l, --load <file>    Load trained network from JSON file (inference mode)
+  -i, --input <text>   Classify single input text and exit (non-interactive)
+
+GENERAL OPTIONS:
+  -h, --help           Show help message
+```
+
+### Training Mode
+
+Train a neural network from scratch using a configuration file:
+
+```bash
+# Train with default configuration (built-in words: time, hour, main)
+./NNets
+
+# Train with custom configuration
+./NNets -c configs/default.json
+
+# Train and save the network for later use
+./NNets -c configs/default.json -s model.json
+
+# Train with automated testing (no interactive mode)
+./NNets -c configs/default.json -s model.json -t
+
+# Benchmark training speed
+./NNets -c configs/default.json -b
+```
+
+### Inference Mode
+
+Load a pre-trained network and classify inputs:
+
+```bash
+# Interactive inference mode
+./NNets -l model.json
+
+# Classify a single text (non-interactive, for scripts/tests)
+./NNets -l model.json -i "time"
+./NNets -l model.json -i "yes"
+```
+
+### Training Configuration Format
+
+Training configurations are JSON files that define the classes and training images:
+
+```json
+{
+  "description": "Example configuration",
+  "receptors": 20,
+  "classes": [
+    { "id": 0, "word": "" },
+    { "id": 1, "word": "yes" },
+    { "id": 2, "word": "no" }
+  ],
+  "generate_shifts": true
+}
+```
+
+Configuration options:
+- `receptors`: Number of neural network inputs (text length)
+- `classes`: Array of classes with unique `id` and `word` to recognize
+- `generate_shifts`: If `true`, generates shifted variants of each word for robust recognition
+- `description`: Optional description of the configuration
+
+For advanced use, you can specify training images directly:
+
+```json
+{
+  "receptors": 12,
+  "images": [
+    { "word": "yes         ", "id": 1 },
+    { "word": " yes        ", "id": 1 },
+    { "word": "no          ", "id": 2 }
+  ]
+}
+```
+
+### Saved Network Format
+
+Trained networks are saved in JSON format:
+
+```json
+{
+  "version": "1.0",
+  "description": "Trained neural network model",
+  "receptors": 12,
+  "base_size": 14,
+  "inputs": 26,
+  "neurons_count": 308,
+  "basis": [0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, -0.125, -0.25, -0.5, -1.0, -2.0, -4.0, -8.0],
+  "classes": [
+    { "id": 0, "name": "", "output_neuron": 109 },
+    { "id": 1, "name": "yes", "output_neuron": 298 },
+    { "id": 2, "name": "no", "output_neuron": 307 }
+  ],
+  "neurons": [
+    { "i": 12, "j": 13, "op": 3 },
+    { "i": 5, "j": 26, "op": 1 }
+  ]
+}
+```
+
+Network structure:
+- `receptors`: Number of text character inputs
+- `basis`: Base values used for neuron operations
+- `classes`: Classes the network can recognize, with output neuron indices
+- `neurons`: Network structure (neuron IDs are implicit as `inputs + array_index`)
 
 ## Example
 
@@ -61,12 +179,12 @@ Input word: time
 99% - time
 1% - hour
 0% - main
-0% - 
+0% -
 Input word: hour
 0% - time
 98% - hour
 0% - main
-1% - 
+1% -
 ```
 
 ## License
