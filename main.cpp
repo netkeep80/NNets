@@ -25,6 +25,7 @@
 #include <atomic>
 #include <algorithm>
 #include <numeric>
+#include <csignal>
 #include <nlohmann/json.hpp>
 
 using namespace std;
@@ -88,6 +89,13 @@ vector<vector<float>> vx;                         // Входные значен
 vector<float> vz;                                 // Ожидаемые выходные значения
 vector<int> NetOutput;                            // Выходные нейроны для классов
 char InputStr[StringSize], word_buf[StringSize];  // Буферы для ввода
+
+// ============================================================================
+// Глобальные переменные для прерывания обучения
+// ============================================================================
+
+volatile std::sig_atomic_t g_interruptRequested = 0;  // Флаг запроса прерывания
+string g_autoSavePath = "";                           // Путь для автосохранения при прерывании
 
 // ============================================================================
 // Операции нейронов - элементарные математические действия
@@ -202,6 +210,24 @@ const int MAX_NEURONS = 64000;                    // Максимальное к
 // ============================================================================
 
 /**
+ * Обработчик сигнала прерывания (Ctrl+C)
+ *
+ * Устанавливает флаг прерывания для корректного завершения обучения.
+ */
+void interruptHandler(int signal) {
+	if (signal == SIGINT) {
+		if (g_interruptRequested == 0) {
+			g_interruptRequested = 1;
+			cout << "\n[INTERRUPT] Ctrl+C detected. Training will stop after current iteration..." << endl;
+			cout << "[INTERRUPT] Press Ctrl+C again to force exit (may lose progress)." << endl;
+		} else {
+			cout << "\n[INTERRUPT] Force exit requested." << endl;
+			exit(1);
+		}
+	}
+}
+
+/**
  * Вывод справки по использованию программы
  */
 void printUsage(const char* programName) {
@@ -210,6 +236,7 @@ void printUsage(const char* programName) {
 	cout << "MODES:" << endl;
 	cout << "  Training mode (default): Train network and optionally save to file" << endl;
 	cout << "  Inference mode: Load trained network and classify inputs" << endl;
+	cout << "  Retraining mode: Load existing network and continue training with new data" << endl;
 	cout << endl;
 	cout << "TRAINING OPTIONS:" << endl;
 	cout << "  -c, --config <file>  Load training configuration from JSON file" << endl;
@@ -217,9 +244,15 @@ void printUsage(const char* programName) {
 	cout << "  -t, --test           Run automated test after training (no interactive mode)" << endl;
 	cout << "  -b, --benchmark      Run benchmark to measure training speed" << endl;
 	cout << endl;
+	cout << "RETRAINING OPTIONS:" << endl;
+	cout << "  -r, --retrain <file> Load existing network and continue training (retraining mode)" << endl;
+	cout << "                       Combines -l (load) with training mode. Requires -c for new data." << endl;
+	cout << "                       New classes in config (without output_neuron) will be trained." << endl;
+	cout << endl;
 	cout << "INFERENCE OPTIONS:" << endl;
 	cout << "  -l, --load <file>    Load trained network from JSON file (inference mode)" << endl;
 	cout << "  -i, --input <text>   Classify single input text and exit (non-interactive)" << endl;
+	cout << "  --verify             Verify accuracy of loaded model on training config (-c required)" << endl;
 	cout << endl;
 	cout << "PERFORMANCE OPTIONS:" << endl;
 	cout << "  -j, --threads <n>    Number of threads to use (0 = auto, default)" << endl;
@@ -228,10 +261,17 @@ void printUsage(const char* programName) {
 	cout << "GENERAL OPTIONS:" << endl;
 	cout << "  -h, --help           Show this help message" << endl;
 	cout << endl;
+	cout << "INTERRUPTION:" << endl;
+	cout << "  Press Ctrl+C during training to interrupt gracefully." << endl;
+	cout << "  The network will be saved if -s is specified." << endl;
+	cout << "  Training can be continued later with -r option." << endl;
+	cout << endl;
 	cout << "EXAMPLES:" << endl;
 	cout << "  " << programName << " -c configs/default.json -s model.json  # Train and save" << endl;
 	cout << "  " << programName << " -l model.json                          # Interactive inference" << endl;
 	cout << "  " << programName << " -l model.json -i \"time\"                # Single classification" << endl;
+	cout << "  " << programName << " -r model.json -c configs/new.json -s model_v2.json  # Retrain" << endl;
+	cout << "  " << programName << " -l model.json -c configs/test.json --verify  # Verify accuracy" << endl;
 	cout << endl;
 	cout << "JSON config format (training):" << endl;
 	cout << "  {" << endl;
@@ -331,10 +371,13 @@ int main(int argc, char* argv[])
 	string configPath = "";
 	string savePath = "";
 	string loadPath = "";
+	string retrainPath = "";
 	string inputText = "";
 	bool testMode = false;
 	bool benchmarkMode = false;
 	bool inferenceMode = false;
+	bool retrainMode = false;
+	bool verifyMode = false;
 
 	for (int i = 1; i < argc; i++) {
 		string arg = argv[i];
@@ -345,12 +388,17 @@ int main(int argc, char* argv[])
 		} else if ((arg == "-l" || arg == "--load") && i + 1 < argc) {
 			loadPath = argv[++i];
 			inferenceMode = true;
+		} else if ((arg == "-r" || arg == "--retrain") && i + 1 < argc) {
+			retrainPath = argv[++i];
+			retrainMode = true;
 		} else if ((arg == "-i" || arg == "--input") && i + 1 < argc) {
 			inputText = argv[++i];
 		} else if (arg == "-t" || arg == "--test") {
 			testMode = true;
 		} else if (arg == "-b" || arg == "--benchmark") {
 			benchmarkMode = true;
+		} else if (arg == "--verify") {
+			verifyMode = true;
 		} else if ((arg == "-j" || arg == "--threads") && i + 1 < argc) {
 			NumThreads = atoi(argv[++i]);
 		} else if (arg == "--single-thread") {
@@ -361,9 +409,96 @@ int main(int argc, char* argv[])
 		}
 	}
 
+	// Установка обработчика сигнала Ctrl+C
+	std::signal(SIGINT, interruptHandler);
+	g_autoSavePath = savePath;
+
+	// ===== РЕЖИМ ВЕРИФИКАЦИИ ТОЧНОСТИ =====
+	// Загружаем обученную сеть и тестируем на данных из конфига
+	if (verifyMode) {
+		if (loadPath.empty()) {
+			cerr << "Error: --verify requires -l <model.json>" << endl;
+			return 1;
+		}
+		if (configPath.empty()) {
+			cerr << "Error: --verify requires -c <config.json> for test data" << endl;
+			return 1;
+		}
+
+		// Загружаем сеть
+		if (!loadNetwork(loadPath)) {
+			return 1;
+		}
+
+		// Загружаем конфиг для тестовых данных (сохраняем текущие Receptors для проверки)
+		int savedReceptors = Receptors;
+		if (!loadConfig(configPath, Receptors)) {
+			return 1;
+		}
+
+		// Проверяем совместимость
+		if (Receptors != savedReceptors) {
+			cerr << "Error: Config receptors (" << Receptors << ") don't match model (" << savedReceptors << ")" << endl;
+			return 1;
+		}
+
+		cout << "\n=== Verifying model accuracy ===" << endl;
+
+		int passed = 0;
+		int failed = 0;
+		int total = const_words.size();
+
+		for (int img = 0; img < total; img++) {
+			// Устанавливаем входы сети из образа
+			for (int d = 0; d < Receptors; d++) {
+				if (d < (int)const_words[img].word.length() && const_words[img].word[d] != 0) {
+					NetInput[d] = float((unsigned char)const_words[img].word[d]) / float(max_num);
+				} else {
+					NetInput[d] = float((unsigned char)' ') / float(max_num);
+				}
+			}
+			clear_val_cache(nei, MAX_NEURONS);
+
+			// Находим класс с максимальным выходом
+			int predictedClass = -1;
+			float maxOutput = -big;
+			for (int c = 0; c < Classes; c++) {
+				float output = GetNeironVal(NetOutput[c]);
+				if (output > maxOutput) {
+					maxOutput = output;
+					predictedClass = c;
+				}
+			}
+
+			int expectedClass = const_words[img].id;
+			float expectedOutput = (expectedClass < Classes) ? GetNeironVal(NetOutput[expectedClass]) : 0.0f;
+
+			// Проверяем корректность
+			bool testPassed = (predictedClass == expectedClass) || (expectedOutput >= 0.5f);
+
+			if (testPassed) {
+				passed++;
+			} else {
+				failed++;
+				string shortWord = const_words[img].word.substr(0, 10);
+				cout << "[FAIL] \"" << shortWord << "...\" expected class " << expectedClass
+					 << ", predicted " << predictedClass << " (conf=" << (int)(expectedOutput*100) << "%)" << endl;
+			}
+		}
+
+		cout << "\n=== Verification Summary ===" << endl;
+		cout << "Total samples: " << total << endl;
+		cout << "Passed: " << passed << endl;
+		cout << "Failed: " << failed << endl;
+		float accuracy = (float)passed / (float)total * 100.0f;
+		cout << "Accuracy: " << accuracy << "%" << endl;
+
+		return (failed == 0) ? 0 : 1;
+	}
+
 	// ===== РЕЖИМ ИНФЕРЕНСА =====
 	// Загружаем обученную сеть и переходим к классификации
-	if (inferenceMode) {
+	if (inferenceMode && !retrainMode) {
 		if (!loadNetwork(loadPath)) {
 			return 1;
 		}
@@ -396,15 +531,47 @@ int main(int argc, char* argv[])
 		} while (true);
 	}
 
-	// ===== РЕЖИМ ОБУЧЕНИЯ =====
+	// ===== РЕЖИМ ДООБУЧЕНИЯ =====
+	// Загружаем существующую сеть и дообучаем на новых данных
+	vector<int> trainedClasses;  // Индексы уже обученных классов
+	vector<int> newClassIds;     // Индексы новых классов для обучения
 
-	// Загружаем конфигурацию или используем значения по умолчанию
-	if (!configPath.empty()) {
-		if (!loadConfig(configPath, Receptors)) {
+	if (retrainMode) {
+		if (configPath.empty()) {
+			cerr << "Error: Retraining mode requires -c <config.json> for new training data" << endl;
 			return 1;
 		}
-	} else {
-		initDefaultConfig(Receptors);
+
+		// Загружаем сеть для дообучения
+		if (!loadNetworkForRetraining(retrainPath, trainedClasses)) {
+			return 1;
+		}
+
+		// Объединяем с новой конфигурацией
+		if (!mergeConfigForRetraining(configPath, trainedClasses, newClassIds)) {
+			return 1;
+		}
+
+		if (newClassIds.empty()) {
+			cout << "\nAll classes are already trained. Nothing to do." << endl;
+			cout << "Use --verify to check accuracy or -l for inference mode." << endl;
+			return 0;
+		}
+
+		cout << "\nRetraining mode: will train " << newClassIds.size() << " new class(es)" << endl;
+	}
+
+	// ===== РЕЖИМ ОБУЧЕНИЯ =====
+
+	// Загружаем конфигурацию или используем значения по умолчанию (если не дообучение)
+	if (!retrainMode) {
+		if (!configPath.empty()) {
+			if (!loadConfig(configPath, Receptors)) {
+				return 1;
+			}
+		} else {
+			initDefaultConfig(Receptors);
+		}
 	}
 
 	cout << "Random seed: " << rand() << endl;
@@ -424,7 +591,11 @@ int main(int argc, char* argv[])
 	// Вычисляем производные значения после загрузки конфигурации
 	Images = const_words.size();
 	Inputs = Receptors + base_size;
-	Neirons = Inputs;
+
+	// В режиме дообучения Neirons уже установлен из загруженной сети
+	if (!retrainMode) {
+		Neirons = Inputs;
+	}
 
 	// Выделяем динамические массивы
 	NetInput.resize(Inputs);
@@ -436,7 +607,16 @@ int main(int argc, char* argv[])
 	NetOutput.resize(Classes);
 
 	// Инициализируем массив нейронов
-	initNeurons();
+	// В режиме дообучения нейроны уже инициализированы, но нужно расширить кэши под новые образы
+	if (retrainMode) {
+		// Расширяем кэши под новое количество образов
+		for (int n = 0; n < MAX_NEURONS; n++) {
+			nei[n].c.resize(Images);
+			nei[n].cached = false;  // Сбрасываем кэши, т.к. теперь другое количество образов
+		}
+	} else {
+		initNeurons();
+	}
 
 	// Задаём базисные значения
 	for (int i = 0; i < base_size; i++)
@@ -471,13 +651,32 @@ int main(int argc, char* argv[])
 	vector<float> class_er(Classes, big);
 	float er = .01f;  // Допустимая ошибка
 
+	// В режиме дообучения устанавливаем ошибку 0 для уже обученных классов
+	if (retrainMode) {
+		for (int c : trainedClasses) {
+			class_er[c] = 0.0f;
+		}
+		// Начинаем с первого нового класса
+		if (!newClassIds.empty()) {
+			classIndex = newClassIds[0];
+		}
+	}
+
 	// Засекаем время обучения
 	auto trainingStartTime = chrono::high_resolution_clock::now();
 	int trainingIterations = 0;
+	bool trainingInterrupted = false;
 
 	// Цикл обучения
 	do
 	{
+		// Проверяем запрос на прерывание
+		if (g_interruptRequested) {
+			cout << "\n[INTERRUPT] Training interrupted by user." << endl;
+			trainingInterrupted = true;
+			break;
+		}
+
 		trainingIterations++;
 		cout << "train class:" << classes[classIndex] << " (id=" << classIndex << ")";
 
@@ -513,17 +712,44 @@ int main(int argc, char* argv[])
 	auto trainingEndTime = chrono::high_resolution_clock::now();
 	auto trainingDuration = chrono::duration_cast<chrono::milliseconds>(trainingEndTime - trainingStartTime);
 
-	cout << "\nTraining completed!" << endl;
-	cout << "Final errors per class:" << endl;
+	if (trainingInterrupted) {
+		cout << "\nTraining interrupted after " << trainingIterations << " iterations." << endl;
+	} else {
+		cout << "\nTraining completed!" << endl;
+	}
+
+	cout << "Errors per class:" << endl;
+	int trainedCount = 0;
+	int untrainedCount = 0;
 	for (int c = 0; c < Classes; c++) {
-		cout << "  Class " << c << " (" << classes[c] << "): error = " << class_er[c] << endl;
+		bool isTrained = (class_er[c] <= er);
+		cout << "  Class " << c << " (" << classes[c] << "): error = " << class_er[c];
+		if (isTrained) {
+			cout << " [trained]";
+			trainedCount++;
+		} else {
+			cout << " [not trained]";
+			untrainedCount++;
+		}
+		cout << endl;
+	}
+
+	if (trainingInterrupted && untrainedCount > 0) {
+		cout << "\nWarning: " << untrainedCount << " class(es) are not fully trained." << endl;
+		cout << "Use -r option to continue training later." << endl;
 	}
 
 	// Сохраняем сеть если указан путь
 	if (!savePath.empty()) {
 		if (!saveNetwork(savePath)) {
 			cerr << "Warning: Failed to save network to " << savePath << endl;
+		} else if (trainingInterrupted) {
+			cout << "\nNetwork state saved. To continue training, use:" << endl;
+			cout << "  " << argv[0] << " -r " << savePath << " -c <config.json> -s <output.json>" << endl;
 		}
+	} else if (trainingInterrupted) {
+		cout << "\nWarning: Network state not saved (no -s option specified)." << endl;
+		cout << "Progress will be lost. Use -s to save network for later continuation." << endl;
 	}
 
 	// Режим бенчмарка: выводим метрики скорости обучения

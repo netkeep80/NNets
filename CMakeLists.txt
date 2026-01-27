@@ -179,3 +179,35 @@ set_tests_properties(test_multithreading_benchmark PROPERTIES
     TIMEOUT 300
     LABELS "benchmark;multithreading;performance"
 )
+
+# Test 7: Verification mode test
+# Tests --verify flag for checking model accuracy
+add_test(
+    NAME test_verify_mode
+    COMMAND ${CMAKE_COMMAND}
+        -DNNETS_EXE=$<TARGET_FILE:NNets>
+        -DCONFIG_DIR=${CMAKE_SOURCE_DIR}/configs
+        -DWORK_DIR=${CMAKE_BINARY_DIR}
+        -P ${CMAKE_SOURCE_DIR}/cmake/test_verify.cmake
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+set_tests_properties(test_verify_mode PROPERTIES
+    TIMEOUT 180
+    LABELS "verification;inference"
+)
+
+# Test 8: Retraining mode test
+# Tests -r flag for retraining existing models with new classes
+add_test(
+    NAME test_retraining_mode
+    COMMAND ${CMAKE_COMMAND}
+        -DNNETS_EXE=$<TARGET_FILE:NNets>
+        -DCONFIG_DIR=${CMAKE_SOURCE_DIR}/configs
+        -DWORK_DIR=${CMAKE_BINARY_DIR}
+        -P ${CMAKE_SOURCE_DIR}/cmake/test_retraining.cmake
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+set_tests_properties(test_retraining_mode PROPERTIES
+    TIMEOUT 600
+    LABELS "retraining;training"
+)

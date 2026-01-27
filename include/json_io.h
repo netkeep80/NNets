@@ -373,4 +373,231 @@ bool loadNetwork(const string& filePath) {
     }
 }
 
+/**
+ * Загрузка обученной нейронной сети для дообучения
+ *
+ * Похоже на loadNetwork(), но также загружает начальные классы
+ * и подготавливает структуры для добавления новых классов.
+ * Сохраняет информацию о том, какие классы уже обучены (имеют output_neuron).
+ *
+ * @param filePath - путь к JSON файлу с моделью
+ * @param trainedClasses - выходной вектор: индексы уже обученных классов
+ * @return true при успешной загрузке, false при ошибке
+ */
+bool loadNetworkForRetraining(const string& filePath, vector<int>& trainedClasses) {
+    ifstream inFile(filePath);
+    if (!inFile.is_open()) {
+        cerr << "Error: Cannot open network file: " << filePath << endl;
+        return false;
+    }
+
+    try {
+        json network;
+        inFile >> network;
+
+        // Загружаем конфигурацию
+        Receptors = network["receptors"].get<int>();
+        Inputs = network["inputs"].get<int>();
+        Neirons = network["neurons_count"].get<int>();
+
+        // Проверяем совпадение размера базиса
+        int loadedBaseSize = network["base_size"].get<int>();
+        if (loadedBaseSize != base_size) {
+            cerr << "Warning: Basis size mismatch (file: " << loadedBaseSize
+                 << ", expected: " << base_size << ")" << endl;
+        }
+
+        // Выделяем массив входов сети
+        NetInput.resize(Inputs);
+
+        // Устанавливаем базисные значения
+        for (int i = 0; i < base_size; i++) {
+            NetInput[i + Receptors] = base[i];
+        }
+
+        // Загружаем классы
+        const auto& classesArray = network["classes"];
+        int networkClasses = classesArray.size();
+        classes.clear();
+        classes.resize(networkClasses);
+        NetOutput.resize(networkClasses);
+        trainedClasses.clear();
+
+        for (const auto& cls : classesArray) {
+            int id = cls["id"].get<int>();
+            classes[id] = cls["name"].get<string>();
+            if (cls.contains("output_neuron")) {
+                NetOutput[id] = cls["output_neuron"].get<int>();
+                trainedClasses.push_back(id);
+            } else {
+                NetOutput[id] = -1;  // Не обучен
+            }
+        }
+
+        Classes = networkClasses;
+
+        // Инициализируем нейроны
+        nei.resize(MAX_NEURONS);
+        for (int n = 0; n < MAX_NEURONS; n++) {
+            nei[n].cached = false;
+            nei[n].val_cached = false;
+        }
+
+        // Загружаем структуру нейронов
+        const auto& neuronsArray = network["neurons"];
+        int neuronIndex = Inputs;
+        for (const auto& neuron : neuronsArray) {
+            nei[neuronIndex].i = neuron["i"].get<int>();
+            nei[neuronIndex].j = neuron["j"].get<int>();
+            int opIndex = neuron["op"].get<int>();
+            if (opIndex >= 0 && opIndex < op_count) {
+                nei[neuronIndex].op = op[opIndex];
+            } else {
+                nei[neuronIndex].op = op[0];
+            }
+            neuronIndex++;
+        }
+
+        cout << "Network loaded for retraining from: " << filePath << endl;
+        cout << "  Receptors: " << Receptors << endl;
+        cout << "  Classes: " << Classes << endl;
+        cout << "  Trained classes: " << trainedClasses.size() << endl;
+        for (int c : trainedClasses) {
+            cout << "    " << c << ": " << classes[c] << " (neuron " << NetOutput[c] << ")" << endl;
+        }
+        cout << "  Neurons: " << (Neirons - Inputs) << endl;
+
+        return true;
+    }
+    catch (const json::exception& e) {
+        cerr << "JSON parsing error: " << e.what() << endl;
+        return false;
+    }
+    catch (const exception& e) {
+        cerr << "Error loading network: " << e.what() << endl;
+        return false;
+    }
+}
+
+/**
+ * Объединение загруженной сети с новой конфигурацией для дообучения
+ *
+ * Добавляет новые классы из конфигурации к уже загруженной сети.
+ * Проверяет совместимость receptors.
+ *
+ * @param configPath - путь к JSON файлу конфигурации с новыми данными
+ * @param trainedClasses - индексы уже обученных классов
+ * @param newClassIds - выходной вектор: индексы новых классов для обучения
+ * @return true при успешном объединении, false при ошибке
+ */
+bool mergeConfigForRetraining(const string& configPath, const vector<int>& trainedClasses, vector<int>& newClassIds) {
+    ifstream configFile(configPath);
+    if (!configFile.is_open()) {
+        cerr << "Error: Cannot open config file: " << configPath << endl;
+        return false;
+    }
+
+    try {
+        json config;
+        configFile >> config;
+
+        // Проверяем совместимость receptors
+        int configReceptors = Receptors;
+        if (config.contains("receptors")) {
+            configReceptors = config["receptors"].get<int>();
+        }
+        if (configReceptors != Receptors) {
+            cerr << "Error: Config receptors (" << configReceptors << ") don't match model (" << Receptors << ")" << endl;
+            return false;
+        }
+
+        newClassIds.clear();
+
+        // Загружаем образы из конфигурации
+        if (config.contains("images")) {
+            // Режим прямых образов
+            int maxClassId = Classes - 1;
+            for (const auto& img : config["images"]) {
+                string word = img["word"].get<string>();
+                int id = img["id"].get<int>();
+                const_words.push_back({word, id});
+                if (id > maxClassId) {
+                    maxClassId = id;
+                }
+            }
+
+            // Расширяем классы если нужно
+            if (maxClassId >= Classes) {
+                classes.resize(maxClassId + 1);
+                NetOutput.resize(maxClassId + 1, -1);
+                Classes = maxClassId + 1;
+            }
+
+            // Определяем какие классы нужно обучить
+            for (int c = 0; c < Classes; c++) {
+                bool isTrained = (std::find(trainedClasses.begin(), trainedClasses.end(), c) != trainedClasses.end());
+                if (!isTrained) {
+                    newClassIds.push_back(c);
+                }
+            }
+        }
+        else if (config.contains("classes")) {
+            bool generateShifts = true;
+            if (config.contains("generate_shifts")) {
+                generateShifts = config["generate_shifts"].get<bool>();
+            }
+
+            for (const auto& cls : config["classes"]) {
+                string word = cls["word"].get<string>();
+                int id = cls["id"].get<int>();
+
+                // Проверяем, есть ли это новый класс
+                bool isTrained = (std::find(trainedClasses.begin(), trainedClasses.end(), id) != trainedClasses.end());
+
+                // Расширяем массив классов если нужно
+                if (id >= Classes) {
+                    classes.resize(id + 1);
+                    NetOutput.resize(id + 1, -1);
+                    Classes = id + 1;
+                }
+
+                // Сохраняем имя класса
+                if (classes[id].empty()) {
+                    classes[id] = word;
+                }
+
+                // Генерируем образы для класса
+                if (generateShifts && word.length() > 0) {
+                    generateShiftedImages(word, id, Receptors);
+                } else {
+                    string padded = word;
+                    while ((int)padded.length() < Receptors) {
+                        padded += ' ';
+                    }
+                    const_words.push_back({padded.substr(0, Receptors), id});
+                }
+
+                // Добавляем в список для обучения если не обучен
+                if (!isTrained && std::find(newClassIds.begin(), newClassIds.end(), id) == newClassIds.end()) {
+                    newClassIds.push_back(id);
+                }
+            }
+        }
+
+        cout << "Config merged for retraining: " << configPath << endl;
+        cout << "  Total classes: " << Classes << endl;
+        cout << "  New classes to train: " << newClassIds.size() << endl;
+        for (int c : newClassIds) {
+            cout << "    " << c << ": " << classes[c] << endl;
+        }
+        cout << "  Total images: " << const_words.size() << endl;
+
+        return true;
+    }
+    catch (const json::exception& e) {
+        cerr << "JSON parsing error: " << e.what() << endl;
+        return false;
+    }
+}
+
 #endif // JSON_IO_H
