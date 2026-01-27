@@ -1,0 +1,41 @@
+name: CMake Build
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: Linux GCC
+          - os: windows-latest
+            name: Windows MSVC
+          - os: macos-latest
+            name: macOS Clang
+
+    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.name }}
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Configure CMake
+      run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+    - name: Build
+      run: cmake --build build --config Release
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: NNets-${{ matrix.os }}
+        path: |
+          build/bin/Release/NNets*
+          build/bin/NNets*
+        if-no-files-found: ignore

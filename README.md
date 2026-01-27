@@ -18,22 +18,36 @@ This repository contains a C++ implementation of a self-structuring neural netwo
 
 • Extensible Design: The code is structured to allow users to customize the neuron operations, learning algorithms, and data representations.
 
+## Build
+
+### Using CMake (Recommended)
+
+CMake provides cross-platform build support for Linux, macOS, and Windows.
+
+```bash
+# Configure the build
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+# Build the project
+cmake --build build --config Release
+```
+
+The executable will be located in the `build` directory.
+
+### Using Visual Studio (Windows)
+
+Open `main.sln` in Visual Studio and build the solution.
+
+### Using g++ directly
+
+```bash
+g++ -o NNets main.cpp
+```
+
 ## Usage
 
-1. Setup:
-
-• Clone the repository.
-• Make sure you have a C++ compiler installed (e.g., g++).
-
-2. Compile:
-
-• Navigate to the project directory.
-• Compile the code using a command like: g++ -o NNets main.cpp
-
-3. Run:
-
-• Execute the compiled binary: ./NNets
-• The program will prompt you to enter words.
+1. Run the compiled binary: `./NNets` (Linux/macOS) or `NNets.exe` (Windows)
+2. The program will prompt you to enter words.
 
 4. Training:
 
