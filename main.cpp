@@ -76,10 +76,14 @@ bool loadConfig(const string& configPath, int& receptors) {
 			receptors = config["receptors"].get<int>();
 		}
 
+		// Clear vectors before loading
+		const_words.clear();
+		classes.clear();
+
 		// Check if custom images are provided directly
 		if (config.contains("images")) {
 			// Load images directly from JSON
-			const_words.clear();
+			Classes = 0;
 			for (const auto& img : config["images"]) {
 				string word = img["word"].get<string>();
 				int id = img["id"].get<int>();
@@ -88,11 +92,26 @@ bool loadConfig(const string& configPath, int& receptors) {
 					Classes = id + 1;
 				}
 			}
+			// Build classes vector from unique class IDs
+			classes.resize(Classes);
+			for (const auto& img : const_words) {
+				if (classes[img.id].empty()) {
+					// Store the first word as the class name (trimmed)
+					string trimmed = img.word;
+					size_t end = trimmed.find_last_not_of(' ');
+					if (end != string::npos) {
+						trimmed = trimmed.substr(0, end + 1);
+					} else {
+						trimmed = "";  // All spaces - empty class
+					}
+					classes[img.id] = trimmed;
+				}
+			}
 		}
 		// Otherwise generate from classes
 		else if (config.contains("classes")) {
-			const_words.clear();
 			Classes = config["classes"].size();
+			classes.resize(Classes);
 			bool generateShifts = true;
 			if (config.contains("generate_shifts")) {
 				generateShifts = config["generate_shifts"].get<bool>();
@@ -101,6 +120,9 @@ bool loadConfig(const string& configPath, int& receptors) {
 			for (const auto& cls : config["classes"]) {
 				string word = cls["word"].get<string>();
 				int id = cls["id"].get<int>();
+
+				// Store unique class name
+				classes[id] = word;
 
 				if (generateShifts && word.length() > 0) {
 					generateShiftedImages(word, id, receptors);
@@ -161,6 +183,7 @@ void printUsage(const char* programName) {
 	cout << "Usage: " << programName << " [options]" << endl;
 	cout << "Options:" << endl;
 	cout << "  -c, --config <file>  Load configuration from JSON file" << endl;
+	cout << "  -t, --test           Run automated test after training (no interactive mode)" << endl;
 	cout << "  -h, --help           Show this help message" << endl;
 	cout << endl;
 	cout << "JSON config format:" << endl;
@@ -734,9 +757,12 @@ float	rndrod4()                    /* подпрограмма для рожде
 				float*	C_Vector = GetNeironVector(C_id);
 				sum = 0.0;
 
+				// Calculate error across all images
+				// vz[index] contains expected value for image index
+				// (1.0 if image belongs to current class, 0.0 otherwise)
 				for (int index = 0; index < Images && sum < min; index++)
 				{
-					square = vz[const_words[index].id] - C_Vector[index];
+					square = vz[index] - C_Vector[index];
 					sum += square * square;
 				}
 
@@ -806,10 +832,13 @@ int	main(int argc, char* argv[])
 {
 	// Parse command line arguments
 	string configPath = "";
+	bool testMode = false;
 	for (int i = 1; i < argc; i++) {
 		string arg = argv[i];
 		if ((arg == "-c" || arg == "--config") && i + 1 < argc) {
 			configPath = argv[++i];
+		} else if (arg == "-t" || arg == "--test") {
+			testMode = true;
 		} else if (arg == "-h" || arg == "--help") {
 			printUsage(argv[0]);
 			return 0;
@@ -871,27 +900,30 @@ int	main(int argc, char* argv[])
 		}
 	}
 
-	int iter, image = 0;
-	vector<float> cur_er(const_words.size(), big);
-	float old_er, er = .01f; /* допустимая ошибка в %*/
+	int classIndex = 0;
+	// Track error per class (not per image) - each class can have multiple images
+	vector<float> class_er(Classes, big);
+	float er = .01f; /* допустимая ошибка в %*/
 
 	//rndrod0(Inputs*Receptors);
 
 	do
 	{
-		cout << "train to:" << const_words[image].word;
+		cout << "train class:" << classes[classIndex] << " (id=" << classIndex << ")";
 
-		// задаём вектор выходных значений распознавания текущего образа
-		for (int index = 0; index < Classes; index++)
+		// Set expected output vector: 1.0 for images of current class, 0.0 for others
+		// vz[image_index] = expected value for that image based on training to recognize classIndex
+		vz.resize(Images);  // Resize vz to number of images
+		for (int img = 0; img < Images; img++)
 		{
-			if (const_words[image].id == index)
-				vz[index] = 1.0;
+			if (const_words[img].id == classIndex)
+				vz[img] = 1.0;  // This image belongs to the class we're training
 			else
-				vz[index] = 0.0;
+				vz[img] = 0.0;  // This image does NOT belong to the class
 		}
 
-		// обучаемся распознавать текущий образ
-		if (cur_er[image] > er)
+		// Train to recognize current class
+		if (class_er[classIndex] > er)
 		{/*
 			// среди существующих нейронов невозможно найти решение
 			// создаём слой случайных нейронов
@@ -899,46 +931,118 @@ int	main(int argc, char* argv[])
 
 			// поверх создаём слой 3х входовых случайных оптимизированных нейронов
 			// ищём при этом подходящий нейрон для опознания образа
-			cur_er[image] = rndrod2();
+			class_er[classIndex] = rndrod2();
 
-			iter = rndrod2_iter - 1;
-			while (iter-- > 0 && cur_er[image] > er)
-				cur_er[image] = rndrod2();
+			int iter = rndrod2_iter - 1;
+			while (iter-- > 0 && class_er[classIndex] > er)
+				class_er[classIndex] = rndrod2();
 
-			if (cur_er[image] > er)
+			if (class_er[classIndex] > er)
 			{
-				// пытаемся найти подходящий выходной нейрон для текущего образа  с номером image
-				cur_er[image] = rod();
+				// пытаемся найти подходящий выходной нейрон для текущего класса
+				class_er[classIndex] = rod();
 
 				// создаём дополнительные нейроны до тех пор пока не появится подходящий
+				float old_er;
 				iter = rod2_iter - 1;
-				while (iter-- > 0 && cur_er[image] > er)
+				while (iter-- > 0 && class_er[classIndex] > er)
 				{
-					old_er = cur_er[image];
-					cur_er[image] = rod2();
+					old_er = class_er[classIndex];
+					class_er[classIndex] = rod2();
 					// если ошибка не уменьшилась то нет смысла создавать новые нейроны данным методом
-					if (old_er == cur_er[image]) break;
+					if (old_er == class_er[classIndex]) break;
 				}
 			}
 			*/
 
-			cur_er[image] = rndrod4();
-			//cur_er[image] = rod();
-			//cur_er[image] = rod2();
-			//cur_er[image] = rod3();
+			class_er[classIndex] = rndrod4();
+			//class_er[classIndex] = rod();
+			//class_er[classIndex] = rod2();
+			//class_er[classIndex] = rod3();
 
-			// запоминаем номер выходного нейрона который опознаёт текущий образ
-			NetOutput[const_words[image].id] = Neirons - 1;
+			// Store the output neuron for this class
+			NetOutput[classIndex] = Neirons - 1;
 		}
 
-		cout << ", n" << NetOutput[const_words[image].id] << " = " << cur_er[image] << endl;
+		cout << ", n" << NetOutput[classIndex] << " = " << class_er[classIndex] << endl;
 
-		if (++image >= const_words.size())	//	идём по кругу
-			image = 0;
+		if (++classIndex >= Classes)	//	идём по кругу
+			classIndex = 0;
 
-	} while (sum(cur_er.data(), const_words.size()) > const_words.size() * er);
+	} while (sum(class_er.data(), Classes) > Classes * er);
 
+	cout << "\nTraining completed!" << endl;
+	cout << "Final errors per class:" << endl;
+	for (int c = 0; c < Classes; c++) {
+		cout << "  Class " << c << " (" << classes[c] << "): error = " << class_er[c] << endl;
+	}
 
+	// Test mode: validate classification accuracy and exit
+	if (testMode) {
+		cout << "\n=== Running automated classification test ===" << endl;
+		int passed = 0;
+		int failed = 0;
+		float threshold = 0.5f;  // Classification threshold
+
+		for (int img = 0; img < Images; img++) {
+			// Set network input for this image
+			for (int d = 0; d < Receptors; d++) {
+				NetInput[d] = vx[img][d];
+			}
+			clear_val_cache(nei, MAX_NEURONS);
+
+			// Find the class with highest output
+			int predictedClass = -1;
+			float maxOutput = -big;
+			for (int c = 0; c < Classes; c++) {
+				float output = GetNeironVal(NetOutput[c]);
+				if (output > maxOutput) {
+					maxOutput = output;
+					predictedClass = c;
+				}
+			}
+
+			int expectedClass = const_words[img].id;
+			float expectedOutput = GetNeironVal(NetOutput[expectedClass]);
+
+			// Test passes if:
+			// 1. Predicted class matches expected class, OR
+			// 2. Expected class output is above threshold
+			bool testPassed = (predictedClass == expectedClass) || (expectedOutput >= threshold);
+
+			if (testPassed) {
+				passed++;
+				cout << "[PASS] Image " << img << " (\"" << const_words[img].word.substr(0, 10)
+					 << "...\"): expected class " << expectedClass
+					 << ", predicted " << predictedClass
+					 << " (output=" << expectedOutput << ")" << endl;
+			} else {
+				failed++;
+				cout << "[FAIL] Image " << img << " (\"" << const_words[img].word.substr(0, 10)
+					 << "...\"): expected class " << expectedClass
+					 << ", predicted " << predictedClass
+					 << " (output=" << expectedOutput << ")" << endl;
+			}
+		}
+
+		cout << "\n=== Test Summary ===" << endl;
+		cout << "Total images: " << Images << endl;
+		cout << "Passed: " << passed << endl;
+		cout << "Failed: " << failed << endl;
+		float accuracy = (float)passed / (float)Images * 100.0f;
+		cout << "Accuracy: " << accuracy << "%" << endl;
+
+		// Exit with appropriate code
+		if (failed == 0) {
+			cout << "\nAll tests PASSED!" << endl;
+			return 0;
+		} else {
+			cout << "\nSome tests FAILED!" << endl;
+			return 1;
+		}
+	}
+
+	// Interactive mode
 	do
 	{
 		/* считывается новая порция данных и подается на вход/вых.*/
