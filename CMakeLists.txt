@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.14)
 project(NNets VERSION 1.0.0 LANGUAGES CXX)
 
-# Set C++ standard
-set(CMAKE_CXX_STANDARD 11)
+# Set C++ standard (C++17 required for parallel algorithms)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -11,6 +11,20 @@ add_executable(NNets main.cpp)
 
 # Add include directory for nlohmann/json (header-only library)
 target_include_directories(NNets PRIVATE ${CMAKE_SOURCE_DIR}/include)
+
+# Find threading library
+find_package(Threads REQUIRED)
+target_link_libraries(NNets PRIVATE Threads::Threads)
+
+# Find TBB for parallel execution policies (optional but recommended)
+find_package(TBB QUIET)
+if(TBB_FOUND)
+    target_link_libraries(NNets PRIVATE TBB::tbb)
+    target_compile_definitions(NNets PRIVATE HAS_TBB=1)
+    message(STATUS "TBB found - parallel execution policies enabled")
+else()
+    message(STATUS "TBB not found - using thread-based parallelism")
+endif()
 
 # Platform-specific settings
 if(MSVC)
@@ -148,4 +162,20 @@ add_test(
 set_tests_properties(test_extended_classification PROPERTIES
     TIMEOUT 300
     LABELS "classification;extended"
+)
+
+# Test 6: Multithreading benchmark comparison
+# Compares single-threaded vs multi-threaded training performance
+add_test(
+    NAME test_multithreading_benchmark
+    COMMAND ${CMAKE_COMMAND}
+        -DNNETS_EXE=$<TARGET_FILE:NNets>
+        -DCONFIG_DIR=${CMAKE_SOURCE_DIR}/configs
+        -DWORK_DIR=${CMAKE_BINARY_DIR}
+        -P ${CMAKE_SOURCE_DIR}/cmake/test_multithreading.cmake
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+set_tests_properties(test_multithreading_benchmark PROPERTIES
+    TIMEOUT 300
+    LABELS "benchmark;multithreading;performance"
 )

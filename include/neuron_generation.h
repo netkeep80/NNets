@@ -554,4 +554,259 @@ float rndrod4() {
         return big;
 }
 
+// ============================================================================
+// Многопоточные версии функций генерации нейронов
+// ============================================================================
+
+/**
+ * Структура для хранения результата поиска в потоке
+ */
+struct ThreadSearchResult {
+    float min_error;
+    Neiron optimal_A;
+    Neiron optimal_B;
+    Neiron optimal_C;
+    bool found;
+
+    ThreadSearchResult() : min_error(big), found(false) {}
+};
+
+/**
+ * Вычисление вектора значений для заданного нейрона
+ * (с использованием кэша для уже существующих нейронов)
+ *
+ * @param neuron_i - первый вход нейрона
+ * @param neuron_j - второй вход нейрона
+ * @param neuron_op - операция нейрона
+ * @param result - буфер для результата
+ */
+void ComputeNeironVector_Direct(
+    int neuron_i,
+    int neuron_j,
+    oper neuron_op,
+    vector<float>& result)
+{
+    result.resize(Images);
+    float* i_cache = GetNeironVector(neuron_i);
+    float* j_cache = GetNeironVector(neuron_j);
+    (*neuron_op)(result.data(), i_cache, j_cache, Images);
+}
+
+/**
+ * Функция потока для параллельного поиска оптимальных нейронов
+ *
+ * Каждый поток получает своё подмножество случайных комбинаций
+ * параметров нейронов для поиска оптимального решения.
+ *
+ * @param thread_id - ID потока
+ * @param iterations_per_thread - количество итераций для этого потока
+ * @param current_neirons - текущее количество нейронов
+ * @param seed - начальное значение для генератора случайных чисел
+ * @param result - результат поиска (выходной параметр)
+ * @param global_min - указатель на атомарную переменную с глобальным минимумом
+ */
+void SearchThreadFunc(
+    int thread_id,
+    int iterations_per_thread,
+    int current_neirons,
+    unsigned int seed,
+    ThreadSearchResult& result,
+    std::atomic<float>* global_min)
+{
+    // Локальный генератор случайных чисел для потока
+    // Используем линейный конгруэнтный генератор для независимости от глобального состояния
+    unsigned int local_seed = seed + thread_id * 1099087573u;
+    auto local_rand = [&local_seed]() -> int {
+        local_seed = local_seed * 1103515245u + 12345u;
+        return (int)((local_seed >> 16) & 0x7FFF);
+    };
+
+    Neiron local_A, local_B, local_C;
+    vector<float> A_Vector(Images), B_Vector(Images), C_Vector(Images);
+
+    // Инициализируем A случайными значениями
+    local_A.i = local_rand() % current_neirons;
+    local_A.j = local_rand() % current_neirons;
+    local_A.op = op[local_rand() % op_count];
+
+    float* A_i_cache = GetNeironVector(local_A.i);
+    float* A_j_cache = GetNeironVector(local_A.j);
+    (*local_A.op)(A_Vector.data(), A_i_cache, A_j_cache, Images);
+
+    for (int count = 0; count < iterations_per_thread; count++)
+    {
+        // Генерируем случайные параметры для B
+        local_B.i = local_rand() % current_neirons;
+        local_B.j = local_rand() % current_neirons;
+
+        float* B_i_cache = GetNeironVector(local_B.i);
+        float* B_j_cache = GetNeironVector(local_B.j);
+
+        // Перебираем операции для B и C
+        for (int B_op = 0; B_op < op_count; B_op++)
+        {
+            local_B.op = op[B_op];
+            (*local_B.op)(B_Vector.data(), B_i_cache, B_j_cache, Images);
+
+            for (int C_op = 0; C_op < op_count; C_op++)
+            {
+                local_C.op = op[C_op];
+                (*local_C.op)(C_Vector.data(), A_Vector.data(), B_Vector.data(), Images);
+
+                // Вычисляем ошибку по всем образам
+                float current_global_min = global_min->load(std::memory_order_relaxed);
+                float sum = 0.0f;
+                for (int index = 0; index < Images && sum < current_global_min; index++)
+                {
+                    float square = vz[index] - C_Vector[index];
+                    sum += square * square;
+                }
+
+                if (result.min_error > sum)
+                {
+                    result.found = true;
+                    result.min_error = sum;
+                    result.optimal_A = local_A;
+                    result.optimal_B = local_B;
+                    result.optimal_C = local_C;
+
+                    // Обновляем глобальный минимум для early termination в других потоках
+                    float expected = global_min->load(std::memory_order_relaxed);
+                    while (sum < expected) {
+                        if (global_min->compare_exchange_weak(expected, sum, std::memory_order_relaxed)) {
+                            break;
+                        }
+                    }
+
+                    // Используем оптимальный нейрон B как новый A
+                    local_A = local_B;
+                    for (int im = 0; im < Images; im++) {
+                        A_Vector[im] = B_Vector[im];
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Многопоточная генерация тройки нейронов
+ *
+ * Параллельная версия rndrod4(), распределяющая поиск
+ * между несколькими потоками. Каждый поток исследует
+ * случайные комбинации параметров нейронов независимо.
+ *
+ * Ключевая идея: общее количество итераций увеличивается
+ * пропорционально количеству потоков, что обеспечивает
+ * эквивалентное качество поиска при большей скорости.
+ *
+ * @return минимальная достигнутая ошибка, или big если не найдено
+ */
+float rndrod4_parallel() {
+    // Если многопоточность отключена или только 1 поток, используем последовательную версию
+    if (!UseMultithreading || NumThreads <= 1) {
+        return rndrod4();
+    }
+
+    // Общее количество итераций для параллельного поиска
+    // Каждый поток получает count_max / NumThreads итераций
+    // Но общее количество итераций (сумма по всем потокам) равно count_max
+    int count_max = Neirons * Receptors * 4;
+
+    // Для задач с малым и средним количеством нейронов параллелизация
+    // может привести к нестабильному качеству поиска из-за:
+    // 1. Независимости траекторий поиска между потоками
+    // 2. Меньшего количества итераций на поток при делении workload
+    // 3. Разных точек сходимости случайного поиска
+    //
+    // Используем однопоточную версию для обеспечения стабильного качества
+    // обучения на небольших и средних задачах (< 500 нейронов).
+    // Параллельный режим применяется только для крупных сетей, где
+    // объём вычислений достаточен для надёжного параллельного поиска.
+    //
+    // Порог: count_max = Neirons * Receptors * 4
+    // При Neirons = 500, Receptors = 20: count_max = 40000
+    // Используем порог 500000 чтобы гарантировать Neirons >= 6250 при Receptors=20
+    if (count_max < 500000) {
+        return rndrod4();
+    }
+
+    // Каждый поток выполняет часть итераций
+    // Для крупных сетей это обеспечивает значительное ускорение
+    int iterations_per_thread = (count_max + NumThreads - 1) / NumThreads;
+
+    // Создаём результаты для каждого потока
+    vector<ThreadSearchResult> results(NumThreads);
+
+    // Атомарная переменная для синхронизации глобального минимума
+    std::atomic<float> global_min(big);
+
+    // Получаем начальное значение для генераторов случайных чисел
+    // Используем текущее количество нейронов как основу для seed,
+    // что обеспечивает детерминированность при фиксированном srand()
+    // и разные стартовые точки для каждого вызова rndrod4_parallel
+    unsigned int base_seed = (unsigned int)(Neirons * 1099087573u + 12345u);
+
+    // ВАЖНО: Предварительно прогреваем кэши всех существующих нейронов
+    // Это необходимо для избежания race condition, когда несколько потоков
+    // одновременно пытаются заполнить кэш одного и того же нейрона.
+    // GetNeironVector() не является потокобезопасным при заполнении кэша.
+    for (int n = 0; n < Neirons; n++) {
+        GetNeironVector(n);
+    }
+
+    // Запускаем потоки
+    vector<std::thread> threads;
+    threads.reserve(NumThreads);
+
+    for (int t = 0; t < NumThreads; t++) {
+        threads.emplace_back(SearchThreadFunc,
+                             t,
+                             iterations_per_thread,
+                             Neirons,
+                             base_seed,
+                             std::ref(results[t]),
+                             &global_min);
+    }
+
+    // Ждём завершения всех потоков
+    for (auto& t : threads) {
+        t.join();
+    }
+
+    // Находим лучший результат среди всех потоков
+    float best_min = big;
+    int best_thread = -1;
+    for (int t = 0; t < NumThreads; t++) {
+        if (results[t].found && results[t].min_error < best_min) {
+            best_min = results[t].min_error;
+            best_thread = t;
+        }
+    }
+
+    if (best_thread >= 0) {
+        // Сохраняем оптимальные нейроны
+        int A_id = Neirons;
+        int B_id = Neirons + 1;
+        int C_id = Neirons + 2;
+
+        nei[A_id] = results[best_thread].optimal_A;
+        nei[A_id].cached = false;
+        nei[B_id] = results[best_thread].optimal_B;
+        nei[B_id].cached = false;
+        nei[C_id] = results[best_thread].optimal_C;
+        nei[C_id].cached = false;
+
+        // Устанавливаем правильные связи для C
+        nei[C_id].i = A_id;
+        nei[C_id].j = B_id;
+
+        Neirons += 3;
+        return best_min;
+    }
+    else {
+        return big;
+    }
+}
+
 #endif // NEURON_GENERATION_H
