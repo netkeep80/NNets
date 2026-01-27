@@ -17,165 +17,157 @@
 #include <math.h>
 #include <string.h>
 #include <cmath>
+#include <vector>
+#include <string>
+#include <nlohmann/json.hpp>
 
 using namespace std;
+using json = nlohmann::json;
 
 struct Image
 {
-	char* word;
+	string word;
 	int	id;
 };
 
-const	int		Classes = 4;
-Image	const_words[] = {
-{ "                ", 0 },
-{ "time            ", 1 },
-{ "hour            ", 2 },
-{ "main            ", 3 },
-{ " time           ", 1 },
-{ "  time          ", 1 },
-{ "   time         ", 1 },
-{ "    time        ", 1 },
-{ "     time       ", 1 },
-{ "      time      ", 1 },
-{ "       time     ", 1 },
-{ "        time    ", 1 },
-{ "         time   ", 1 },
-{ "          time  ", 1 },
-{ "           time ", 1 },
-{ "            time", 1 },
-{ " hour           ", 2 },
-{ "  hour          ", 2 },
-{ "   hour         ", 2 },
-{ "    hour        ", 2 },
-{ "     hour       ", 2 },
-{ "      hour      ", 2 },
-{ "       hour     ", 2 },
-{ "        hour    ", 2 },
-{ "         hour   ", 2 },
-{ "          hour  ", 2 },
-{ "           hour ", 2 },
-{ "            hour", 2 },
-{ " main           ", 3 },
-{ "  main          ", 3 },
-{ "   main         ", 3 },
-{ "    main        ", 3 },
-{ "     main       ", 3 },
-{ "      main      ", 3 },
-{ "       main     ", 3 },
-{ "        main    ", 3 },
-{ "         main   ", 3 },
-{ "          main  ", 3 },
-{ "           main ", 3 },
-{ "            main", 3 },
-};
+// Dynamic configuration loaded from JSON
+int		Classes = 4;
+vector<Image>	const_words;
 
-/*
-const	int		Classes = 7;
-Image	const_words[] = {
-{ "            ", 0 },
-{ "time        ", 1 },
-{ "hour        ", 2 },
-{ "main        ", 3 },
-{ "need        ", 4 },
-{ "most        ", 5 },
-{ "want        ", 6 },
-{ " time       ", 1 },
-{ "  time      ", 1 },
-{ "   time     ", 1 },
-{ "    time    ", 1 },
-{ "     time   ", 1 },
-{ "      time  ", 1 },
-{ "       time ", 1 },
-{ "        time", 1 },
-{ " hour       ", 2 },
-{ "  hour      ", 2 },
-{ "   hour     ", 2 },
-{ "    hour    ", 2 },
-{ "     hour   ", 2 },
-{ "      hour  ", 2 },
-{ "       hour ", 2 },
-{ "        hour", 2 },
-{ " main       ", 3 },
-{ "  main      ", 3 },
-{ "   main     ", 3 },
-{ "    main    ", 3 },
-{ "     main   ", 3 },
-{ "      main  ", 3 },
-{ "       main ", 3 },
-{ "        main", 3 },
-{ " need       ", 4 },
-{ "  need      ", 4 },
-{ "   need     ", 4 },
-{ "    need    ", 4 },
-{ "     need   ", 4 },
-{ "      need  ", 4 },
-{ "       need ", 4 },
-{ "        need", 4 },
-{ " most       ", 5 },
-{ "  most      ", 5 },
-{ "   most     ", 5 },
-{ "    most    ", 5 },
-{ "     most   ", 5 },
-{ "      most  ", 5 },
-{ "       most ", 5 },
-{ "        most", 5 },
-{ " want       ", 6 },
-{ "  want      ", 6 },
-{ "   want     ", 6 },
-{ "    want    ", 6 },
-{ "     want   ", 6 },
-{ "      want  ", 6 },
-{ "       want ", 6 },
-{ "        want", 6 }
-};
-*/
+// Function to generate shifted variants of a word
+void generateShiftedImages(const string& word, int id, int receptors) {
+	// Pad word to receptors length
+	string padded = word;
+	while ((int)padded.length() < receptors) {
+		padded += ' ';
+	}
+	padded = padded.substr(0, receptors);
 
-/*
-const	int		Classes = 40;
-Image	const_words[] = {
-{ "", 0 },
-{ "time", 1 },
-{ "timer", 2 },
-{ "event", 3 },
-{ "first", 4 },
-{ "second", 5 },
-{ "minute", 6 },
-{ "hour", 7},
-{ "main", 8},
-{ "program", 9},
-{ "about", 10},
-{ "alive", 11},
-{ "death", 12},
-{ "need", 13},
-{ "speed", 14},
-{ "most", 15},
-{ "want", 16},
-{ "open", 17},
-{ "close", 18},
-{ "door", 19},
-{ "watch", 20},
-{ "switch", 21},
-{ "for", 22},
-{ "do", 23},
-{ "while", 24},
-{ "max", 25},
-{ "min", 26},
-{ "image", 27},
-{ "create", 28},
-{ "delete", 29},
-{ "number", 30},
-{ "net", 31},
-{ "window", 32},
-{ "monitor", 33},
-{ "int", 34},
-{ "string", 35},
-{ "input", 36},
-{ "output", 37},
-{ "error", 38},
-{ "ok", 39},
-};
-*/
+	// Add original (left-aligned) version
+	const_words.push_back({padded, id});
+
+	// Generate all shifted versions (word can appear at any position)
+	int wordLen = word.length();
+	for (int shift = 1; shift <= receptors - wordLen; shift++) {
+		string shifted(shift, ' ');
+		shifted += word;
+		while ((int)shifted.length() < receptors) {
+			shifted += ' ';
+		}
+		const_words.push_back({shifted.substr(0, receptors), id});
+	}
+}
+
+// Load configuration from JSON file
+bool loadConfig(const string& configPath, int& receptors) {
+	ifstream configFile(configPath);
+	if (!configFile.is_open()) {
+		cerr << "Error: Cannot open config file: " << configPath << endl;
+		return false;
+	}
+
+	try {
+		json config;
+		configFile >> config;
+
+		// Load receptors (number of neural network inputs)
+		if (config.contains("receptors")) {
+			receptors = config["receptors"].get<int>();
+		}
+
+		// Check if custom images are provided directly
+		if (config.contains("images")) {
+			// Load images directly from JSON
+			const_words.clear();
+			for (const auto& img : config["images"]) {
+				string word = img["word"].get<string>();
+				int id = img["id"].get<int>();
+				const_words.push_back({word, id});
+				if (id >= Classes) {
+					Classes = id + 1;
+				}
+			}
+		}
+		// Otherwise generate from classes
+		else if (config.contains("classes")) {
+			const_words.clear();
+			Classes = config["classes"].size();
+			bool generateShifts = true;
+			if (config.contains("generate_shifts")) {
+				generateShifts = config["generate_shifts"].get<bool>();
+			}
+
+			for (const auto& cls : config["classes"]) {
+				string word = cls["word"].get<string>();
+				int id = cls["id"].get<int>();
+
+				if (generateShifts && word.length() > 0) {
+					generateShiftedImages(word, id, receptors);
+				} else {
+					// Just add the word padded to receptors length
+					string padded = word;
+					while ((int)padded.length() < receptors) {
+						padded += ' ';
+					}
+					const_words.push_back({padded.substr(0, receptors), id});
+				}
+			}
+		}
+
+		cout << "Loaded config: " << configPath << endl;
+		cout << "  Receptors: " << receptors << endl;
+		cout << "  Classes: " << Classes << endl;
+		cout << "  Images: " << const_words.size() << endl;
+		if (config.contains("description")) {
+			cout << "  Description: " << config["description"].get<string>() << endl;
+		}
+
+		return true;
+	}
+	catch (const json::exception& e) {
+		cerr << "JSON parsing error: " << e.what() << endl;
+		return false;
+	}
+}
+
+// Initialize default configuration (original hardcoded values)
+void initDefaultConfig(int receptors) {
+	Classes = 4;
+	const_words.clear();
+
+	// Generate empty class
+	string empty(receptors, ' ');
+	const_words.push_back({empty, 0});
+
+	// Generate shifted images for each word
+	generateShiftedImages("time", 1, receptors);
+	generateShiftedImages("hour", 2, receptors);
+	generateShiftedImages("main", 3, receptors);
+
+	cout << "Using default configuration" << endl;
+	cout << "  Receptors: " << receptors << endl;
+	cout << "  Classes: " << Classes << endl;
+	cout << "  Images: " << const_words.size() << endl;
+}
+
+// Print usage information
+void printUsage(const char* programName) {
+	cout << "Usage: " << programName << " [options]" << endl;
+	cout << "Options:" << endl;
+	cout << "  -c, --config <file>  Load configuration from JSON file" << endl;
+	cout << "  -h, --help           Show this help message" << endl;
+	cout << endl;
+	cout << "JSON config format:" << endl;
+	cout << "  {" << endl;
+	cout << "    \"receptors\": 20,  // Number of neural network inputs" << endl;
+	cout << "    \"classes\": [" << endl;
+	cout << "      { \"id\": 0, \"word\": \"\" }," << endl;
+	cout << "      { \"id\": 1, \"word\": \"time\" }," << endl;
+	cout << "      ..." << endl;
+	cout << "    ]," << endl;
+	cout << "    \"generate_shifts\": true  // Generate position-shifted variants" << endl;
+	cout << "  }" << endl;
+}
 
 const	int		rod2_iter = 2;
 const	int		rndrod_iter = 10;
@@ -198,17 +190,17 @@ const	float	base[] = {
 };	//	785
 const	float	big = 1000000000000000000.f;
 const	int		max_num = 256;				//	число возможных состояний каждого входа
-const	int		Images = sizeof(const_words) / sizeof(Image);				//	число подаваемых образов на нейроннуйю сеть, зависит от количества слов
-const	int		Receptors = 20;				//	число рабочих входов нейронной сети
+int		Images = 0;							//	число подаваемых образов на нейроннуйю сеть (загружается из конфига)
+int		Receptors = 20;						//	число рабочих входов нейронной сети (загружается из конфига)
 const	int		StringSize = 256;			//	максимальный размер строки
 const	int		base_size = sizeof(base) / sizeof(float);
-const	int		Inputs = Receptors + base_size;	//	общее число входов нейронной сети
-int		Neirons = Inputs;						//	число рожденных нейронов
-float	NetInput[Inputs];					//	входные напряжения
-float	vx[Images][Receptors];				//	вектор входных значений
-float	vz[Images];							//	вектор выходных значений
-int		NetOutput[Classes];
-char	InputStr[StringSize], word[StringSize];
+int		Inputs = 0;							//	общее число входов нейронной сети (рассчитывается как Receptors + base_size)
+int		Neirons = 0;						//	число рожденных нейронов
+vector<float>	NetInput;					//	входные напряжения
+vector<vector<float>>	vx;					//	вектор входных значений
+vector<float>	vz;							//	вектор выходных значений
+vector<int>		NetOutput;
+char	InputStr[StringSize], word_buf[StringSize];
 
 
 //////////////////////////////////////////////////////////////////////////////
@@ -306,11 +298,26 @@ public:
 	int		i;                                       /* номер первого входного нейрона */
 	int		j;                                       /* номер второго входного нейрона */
 	oper	op;								         /* элементарное действие */
-	float	c[Images];
+	vector<float>	c;								 /* кэш значений для каждого образа */
 	bool	cached;
 	float	val;
 	bool	val_cached;
-}	nei[64000];										/* нейроны, способные родиться  */
+
+	Neiron() : i(0), j(0), op(nullptr), cached(false), val(0), val_cached(false) {}
+};
+
+vector<Neiron>	nei;									/* нейроны, способные родиться  */
+const int MAX_NEURONS = 64000;
+
+// Initialize neurons with proper vector sizes
+void initNeurons() {
+	nei.resize(MAX_NEURONS);
+	for (int n = 0; n < MAX_NEURONS; n++) {
+		nei[n].c.resize(Images);
+		nei[n].cached = false;
+		nei[n].val_cached = false;
+	}
+}
 
 void	Print(int i)
 {
@@ -354,11 +361,11 @@ float* __fastcall GetNeironVector(const int i)                   /* расчет
 		{
 			float*	icache = GetNeironVector(current.i);
 			float*	jcache = GetNeironVector(current.j);
-			(*current.op)(current.c, icache, jcache, Images);
+			(*current.op)(current.c.data(), icache, jcache, Images);
 		}
 	}
 
-	return current.c;
+	return current.c.data();
 }
 
 
@@ -384,9 +391,10 @@ float __fastcall GetNeironVal(const int i)                   /* расчет з�
 	}
 }
 
-void	clear_val_cache(Neiron*	n, const int size)
+void	clear_val_cache(vector<Neiron>& n, const int size)
 {
-	for (int i = 0; i < size; i++)
+	int limit = (size < (int)n.size()) ? size : (int)n.size();
+	for (int i = 0; i < limit; i++)
 		n[i].val_cached = false;
 }
 
@@ -778,7 +786,7 @@ int	readkeyboard(char* str)
 
 bool	cmp(char* str)
 {
-	return strcmp(str, word) == 0;
+	return strcmp(str, word_buf) == 0;
 }
 
 float	sum(const float* ar, const int size)
@@ -788,9 +796,47 @@ float	sum(const float* ar, const int size)
 	return res;
 }
 
-int	main()
+int	main(int argc, char* argv[])
 {
-	cout << rand() << endl;
+	// Parse command line arguments
+	string configPath = "";
+	for (int i = 1; i < argc; i++) {
+		string arg = argv[i];
+		if ((arg == "-c" || arg == "--config") && i + 1 < argc) {
+			configPath = argv[++i];
+		} else if (arg == "-h" || arg == "--help") {
+			printUsage(argv[0]);
+			return 0;
+		}
+	}
+
+	// Load configuration or use defaults
+	if (!configPath.empty()) {
+		if (!loadConfig(configPath, Receptors)) {
+			return 1;
+		}
+	} else {
+		initDefaultConfig(Receptors);
+	}
+
+	cout << "Random seed: " << rand() << endl;
+
+	// Calculate derived values after configuration is loaded
+	Images = const_words.size();
+	Inputs = Receptors + base_size;
+	Neirons = Inputs;
+
+	// Allocate dynamic arrays
+	NetInput.resize(Inputs);
+	vx.resize(Images);
+	for (int i = 0; i < Images; i++) {
+		vx[i].resize(Receptors);
+	}
+	vz.resize(Images);
+	NetOutput.resize(Classes);
+
+	// Initialize neurons
+	initNeurons();
 
 	// Зададим базис
 	for (int i = 0; i < base_size; i++)
@@ -799,13 +845,13 @@ int	main()
 	// генерируем образы из слов
 	for (int index = 0; index < Images; index++)
 	{
-		memset(word, 0, StringSize);
-		strcpy_s(word, const_words[index].word);
+		memset(word_buf, 0, StringSize);
+		strcpy_s(word_buf, const_words[index].word.c_str());
 
 		cout << "img:";
 		for (int d = 0; d < Receptors; d++)
 		{
-			if (word[d] == 0)
+			if (word_buf[d] == 0)
 			{
 				for (; d < Receptors; d++)
 				{
@@ -817,18 +863,16 @@ int	main()
 			}
 			else
 			{
-				vx[index][d] = float((unsigned char)word[d]) / float(max_num);
-				cout << word[d];
+				vx[index][d] = float((unsigned char)word_buf[d]) / float(max_num);
+				cout << word_buf[d];
 			}
 		}
 		cout << endl;
 	}
 
 	int iter, Class = 0;
-	float old_er, cur_er[Classes], er = .01f; /* допустимая ошибка в %*/
-
-	//	инициализируем ошибки
-	for (int c = 0; c < Classes; c++) cur_er[c] = big;
+	vector<float> cur_er(Classes, big);
+	float old_er, er = .01f; /* допустимая ошибка в %*/
 
 	//rndrod0(Inputs*Receptors);
 
@@ -889,7 +933,7 @@ int	main()
 		if (++Class >= Classes)	//	идём по кругу
 			Class = 0;
 
-	} while (sum(cur_er, Classes) > Classes * er);
+	} while (sum(cur_er.data(), Classes) > Classes * er);
 
 
 	do
@@ -901,25 +945,25 @@ int	main()
 			readkeyboard(InputStr);
 		}
 
-		memset(word, 0, StringSize);
-		strcpy_s(word, InputStr);
+		memset(word_buf, 0, StringSize);
+		strcpy_s(word_buf, InputStr);
 		memset(InputStr, 0, StringSize);
 
 		if (cmp("Q") || cmp("q"))	return 0;
 
 		for (int d = 0; d < Receptors; d++)
 		{
-			if (word[d] == 0)
+			if (word_buf[d] == 0)
 			{
 				NetInput[d] = float((unsigned char)' ') / float(max_num);
 			}
 			else
 			{
-				NetInput[d] = float((unsigned char)word[d]) / float(max_num);
+				NetInput[d] = float((unsigned char)word_buf[d]) / float(max_num);
 			}
 		}
 
-		clear_val_cache(nei, sizeof(nei) / sizeof(Neiron));
+		clear_val_cache(nei, MAX_NEURONS);
 
 		// выводим состояние выходов нейросети
 		for (int out = 0; out < Classes; out++)

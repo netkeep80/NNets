@@ -1,0 +1,27 @@
+{
+    "receptors": 12,
+    "classes": [
+        { "id": 0, "word": "" },
+        { "id": 1, "word": "time" },
+        { "id": 2, "word": "timer" },
+        { "id": 3, "word": "event" },
+        { "id": 4, "word": "first" },
+        { "id": 5, "word": "second" },
+        { "id": 6, "word": "minute" },
+        { "id": 7, "word": "hour" },
+        { "id": 8, "word": "main" },
+        { "id": 9, "word": "program" },
+        { "id": 10, "word": "about" },
+        { "id": 11, "word": "alive" },
+        { "id": 12, "word": "death" },
+        { "id": 13, "word": "need" },
+        { "id": 14, "word": "speed" },
+        { "id": 15, "word": "most" },
+        { "id": 16, "word": "want" },
+        { "id": 17, "word": "open" },
+        { "id": 18, "word": "close" },
+        { "id": 19, "word": "door" }
+    ],
+    "generate_shifts": false,
+    "description": "Keyword recognition configuration with 20 programming and general keywords without shift generation"
+}

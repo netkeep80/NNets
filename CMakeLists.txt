@@ -9,6 +9,9 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Define the executable
 add_executable(NNets main.cpp)
 
+# Add include directory for nlohmann/json (header-only library)
+target_include_directories(NNets PRIVATE ${CMAKE_SOURCE_DIR}/include)
+
 # Platform-specific settings
 if(MSVC)
     # MSVC-specific settings (matching Visual Studio project)
@@ -56,7 +59,18 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR}/bin/Debug)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/bin/Release)
 
+# Copy config files to build directory
+file(GLOB CONFIG_FILES "${CMAKE_SOURCE_DIR}/configs/*.json")
+foreach(CONFIG_FILE ${CONFIG_FILES})
+    get_filename_component(CONFIG_NAME ${CONFIG_FILE} NAME)
+    configure_file(${CONFIG_FILE} ${CMAKE_BINARY_DIR}/configs/${CONFIG_NAME} COPYONLY)
+endforeach()
+
 # Installation rules
 install(TARGETS NNets
     RUNTIME DESTINATION bin
+)
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/configs/
+    DESTINATION share/NNets/configs
+    FILES_MATCHING PATTERN "*.json"
 )
