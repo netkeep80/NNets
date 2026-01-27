@@ -32,6 +32,7 @@ struct Image
 
 // Dynamic configuration loaded from JSON
 int		Classes = 4;
+vector<string>	classes;
 vector<Image>	const_words;
 
 // Function to generate shifted variants of a word
@@ -134,19 +135,24 @@ bool loadConfig(const string& configPath, int& receptors) {
 void initDefaultConfig(int receptors) {
 	Classes = 4;
 	const_words.clear();
+	classes.clear();
 
 	// Generate empty class
 	string empty(receptors, ' ');
 	const_words.push_back({empty, 0});
+	classes.push_back(empty);
 
 	// Generate shifted images for each word
 	generateShiftedImages("time", 1, receptors);
+	classes.push_back("time");
 	generateShiftedImages("hour", 2, receptors);
+	classes.push_back("hour");
 	generateShiftedImages("main", 3, receptors);
+	classes.push_back("main");
 
 	cout << "Using default configuration" << endl;
 	cout << "  Receptors: " << receptors << endl;
-	cout << "  Classes: " << Classes << endl;
+	cout << "  Classes: " << classes.size() << endl;
 	cout << "  Images: " << const_words.size() << endl;
 }
 
@@ -730,7 +736,7 @@ float	rndrod4()                    /* подпрограмма для рожде
 
 				for (int index = 0; index < Images && sum < min; index++)
 				{
-					square = vz[index] - C_Vector[index];
+					square = vz[const_words[index].id] - C_Vector[index];
 					sum += square * square;
 				}
 
@@ -832,7 +838,7 @@ int	main(int argc, char* argv[])
 	for (int i = 0; i < Images; i++) {
 		vx[i].resize(Receptors);
 	}
-	vz.resize(Images);
+	vz.resize(Classes);
 	NetOutput.resize(Classes);
 
 	// Initialize neurons
@@ -847,48 +853,45 @@ int	main(int argc, char* argv[])
 	{
 		memset(word_buf, 0, StringSize);
 		strcpy_s(word_buf, const_words[index].word.c_str());
+		cout << "img:" << const_words[index].word << endl;
 
-		cout << "img:";
 		for (int d = 0; d < Receptors; d++)
 		{
 			if (word_buf[d] == 0)
 			{
 				for (; d < Receptors; d++)
-				{
 					vx[index][d] = float((unsigned char)' ') / float(max_num);
-					cout << " ";
-				}
 
 				break;
 			}
 			else
 			{
 				vx[index][d] = float((unsigned char)word_buf[d]) / float(max_num);
-				cout << word_buf[d];
 			}
 		}
-		cout << endl;
 	}
 
-	int iter, Class = 0;
-	vector<float> cur_er(Classes, big);
+	int iter, image = 0;
+	vector<float> cur_er(const_words.size(), big);
 	float old_er, er = .01f; /* допустимая ошибка в %*/
 
 	//rndrod0(Inputs*Receptors);
 
 	do
 	{
-		cout << "train to:" << const_words[Class].word;
+		cout << "train to:" << const_words[image].word;
 
 		// задаём вектор выходных значений распознавания текущего образа
-		for (int index = 0; index < Images; index++)
+		for (int index = 0; index < Classes; index++)
 		{
-			if (const_words[index].id == Class) vz[index] = 1.0;
-			else vz[index] = 0.0;
+			if (const_words[image].id == index)
+				vz[index] = 1.0;
+			else
+				vz[index] = 0.0;
 		}
 
 		// обучаемся распознавать текущий образ
-		if (cur_er[Class] > er)
+		if (cur_er[image] > er)
 		{/*
 			// среди существующих нейронов невозможно найти решение
 			// создаём слой случайных нейронов
@@ -896,44 +899,44 @@ int	main(int argc, char* argv[])
 
 			// поверх создаём слой 3х входовых случайных оптимизированных нейронов
 			// ищём при этом подходящий нейрон для опознания образа
-			cur_er[Class] = rndrod2();
+			cur_er[image] = rndrod2();
 
 			iter = rndrod2_iter - 1;
-			while (iter-- > 0 && cur_er[Class] > er)
-				cur_er[Class] = rndrod2();
+			while (iter-- > 0 && cur_er[image] > er)
+				cur_er[image] = rndrod2();
 
-			if (cur_er[Class] > er)
+			if (cur_er[image] > er)
 			{
 				// пытаемся найти подходящий выходной нейрон для текущего образа  с номером image
-				cur_er[Class] = rod();
+				cur_er[image] = rod();
 
 				// создаём дополнительные нейроны до тех пор пока не появится подходящий
 				iter = rod2_iter - 1;
-				while (iter-- > 0 && cur_er[Class] > er)
+				while (iter-- > 0 && cur_er[image] > er)
 				{
-					old_er = cur_er[Class];
-					cur_er[Class] = rod2();
+					old_er = cur_er[image];
+					cur_er[image] = rod2();
 					// если ошибка не уменьшилась то нет смысла создавать новые нейроны данным методом
-					if (old_er == cur_er[Class]) break;
+					if (old_er == cur_er[image]) break;
 				}
 			}
 			*/
 
-			cur_er[Class] = rndrod4();
-			//cur_er[Class] = rod();
-			//cur_er[Class] = rod2();
-			//cur_er[Class] = rod3();
+			cur_er[image] = rndrod4();
+			//cur_er[image] = rod();
+			//cur_er[image] = rod2();
+			//cur_er[image] = rod3();
 
 			// запоминаем номер выходного нейрона который опознаёт текущий образ
-			NetOutput[Class] = Neirons - 1;
+			NetOutput[const_words[image].id] = Neirons - 1;
 		}
 
-		cout << ", n" << NetOutput[Class] << " = " << cur_er[Class] << endl;
+		cout << ", n" << NetOutput[const_words[image].id] << " = " << cur_er[image] << endl;
 
-		if (++Class >= Classes)	//	идём по кругу
-			Class = 0;
+		if (++image >= const_words.size())	//	идём по кругу
+			image = 0;
 
-	} while (sum(cur_er.data(), Classes) > Classes * er);
+	} while (sum(cur_er.data(), const_words.size()) > const_words.size() * er);
 
 
 	do
@@ -973,7 +976,7 @@ int	main(int argc, char* argv[])
 			if (!std::isfinite(z1)) z1 = 0.0f;
 			if (z1 < 0.0f) z1 = 0.0f;
 			if (z1 > 100.0f) z1 = 100.0f;
-			cout << long(z1) << "%" << " - " << const_words[out].word << endl; // расчет результата
+			cout << long(z1) << "%" << " - " << classes[out] << endl; // расчет результата
 		}
 
 	} while (true);
