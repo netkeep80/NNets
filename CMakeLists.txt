@@ -36,6 +36,9 @@ if(MSVC)
         $<$<CONFIG:Release>:NDEBUG>
     )
 
+    # SIMD optimization option for MSVC
+    option(ENABLE_SIMD_AVX2 "Enable AVX2 SIMD optimizations for MSVC" ON)
+
     target_compile_options(NNets PRIVATE
         /W3                    # Warning level 3
         $<$<CONFIG:Debug>:/Od>      # Disable optimization for Debug
@@ -44,6 +47,12 @@ if(MSVC)
         $<$<CONFIG:Release>:/Oi>    # Enable intrinsic functions
         $<$<CONFIG:Release>:/Oy>    # Enable frame pointer omission
     )
+
+    # Add SIMD flags for MSVC
+    if(ENABLE_SIMD_AVX2)
+        target_compile_options(NNets PRIVATE /arch:AVX2)
+        message(STATUS "SIMD: AVX2 enabled for MSVC")
+    endif()
 
     # Set runtime library
     set_property(TARGET NNets PROPERTY
@@ -56,6 +65,11 @@ else()
         strcpy_s=strcpy       # Use standard strcpy instead of MSVC's strcpy_s
     )
 
+    # SIMD optimization option (default: native architecture detection)
+    option(ENABLE_SIMD_NATIVE "Enable SIMD optimizations for native architecture" ON)
+    option(ENABLE_AVX "Enable AVX SIMD optimizations explicitly" OFF)
+    option(ENABLE_SSE "Enable SSE SIMD optimizations explicitly" OFF)
+
     target_compile_options(NNets PRIVATE
         -Wall
         -Wextra
@@ -66,6 +80,21 @@ else()
         $<$<CONFIG:Debug>:-O0>
         $<$<CONFIG:Release>:-O3>
     )
+
+    # Add SIMD flags based on options
+    if(ENABLE_SIMD_NATIVE)
+        # Use -march=native for automatic detection of CPU SIMD capabilities
+        target_compile_options(NNets PRIVATE -march=native)
+        message(STATUS "SIMD: Using native architecture detection (-march=native)")
+    elseif(ENABLE_AVX)
+        target_compile_options(NNets PRIVATE -mavx -mavx2)
+        message(STATUS "SIMD: AVX/AVX2 explicitly enabled")
+    elseif(ENABLE_SSE)
+        target_compile_options(NNets PRIVATE -msse -msse2 -msse4.1)
+        message(STATUS "SIMD: SSE/SSE2/SSE4.1 explicitly enabled")
+    else()
+        message(STATUS "SIMD: No SIMD optimizations (scalar operations)")
+    endif()
 endif()
 
 # Set output directories
@@ -210,4 +239,20 @@ add_test(
 set_tests_properties(test_retraining_mode PROPERTIES
     TIMEOUT 600
     LABELS "retraining;training"
+)
+
+# Test 9: SIMD optimization test
+# Tests SIMD vector operations and --no-simd flag
+add_test(
+    NAME test_simd_optimization
+    COMMAND ${CMAKE_COMMAND}
+        -DNNETS_EXE=$<TARGET_FILE:NNets>
+        -DCONFIG_DIR=${CMAKE_SOURCE_DIR}/configs
+        -DWORK_DIR=${CMAKE_BINARY_DIR}
+        -P ${CMAKE_SOURCE_DIR}/cmake/test_simd_benchmark.cmake
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+set_tests_properties(test_simd_optimization PROPERTIES
+    TIMEOUT 120
+    LABELS "simd;performance"
 )
