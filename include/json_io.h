@@ -14,6 +14,13 @@
 #define JSON_IO_H
 
 // ============================================================================
+// Глобальные переменные для конфигурации функций обучения
+// ============================================================================
+
+// Список имён функций обучения из конфига (пустой = использовать функцию по умолчанию)
+std::vector<std::string> g_trainingFuncs;
+
+// ============================================================================
 // Функции загрузки конфигурации
 // ============================================================================
 
@@ -144,12 +151,29 @@ bool loadConfig(const string& configPath, int& receptors) {
             }
         }
 
+        // Загружаем последовательность функций обучения (если задана)
+        g_trainingFuncs.clear();
+        if (config.contains("funcs")) {
+            for (const auto& func : config["funcs"]) {
+                string funcName = func.get<string>();
+                g_trainingFuncs.push_back(funcName);
+            }
+        }
+
         cout << "Loaded config: " << configPath << endl;
         cout << "  Receptors: " << receptors << endl;
         cout << "  Classes: " << Classes << endl;
         cout << "  Images: " << const_words.size() << endl;
         if (config.contains("description")) {
             cout << "  Description: " << config["description"].get<string>() << endl;
+        }
+        if (!g_trainingFuncs.empty()) {
+            cout << "  Training funcs: ";
+            for (size_t i = 0; i < g_trainingFuncs.size(); i++) {
+                if (i > 0) cout << ", ";
+                cout << g_trainingFuncs[i];
+            }
+            cout << endl;
         }
 
         return true;

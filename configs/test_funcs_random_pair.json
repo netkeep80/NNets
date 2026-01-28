@@ -1,0 +1,10 @@
+{
+    "receptors": 10,
+    "classes": [
+        { "id": 0, "word": "" },
+        { "id": 1, "word": "x" }
+    ],
+    "generate_shifts": false,
+    "funcs": ["random_pair_ext_parallel", "random_pair_ext_parallel", "random_pair_ext_parallel", "triplet_parallel"],
+    "description": "Test config for random_pair_ext_parallel function, followed by triplet_parallel to ensure convergence"
+}

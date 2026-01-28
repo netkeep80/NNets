@@ -1,0 +1,10 @@
+{
+    "receptors": 20,
+    "classes": [
+        { "id": 0, "word": "" },
+        { "id": 1, "word": "test" }
+    ],
+    "generate_shifts": false,
+    "funcs": ["triplet_parallel"],
+    "description": "Test config for triplet_parallel function"
+}

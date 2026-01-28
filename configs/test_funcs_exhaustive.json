@@ -1,0 +1,10 @@
+{
+    "receptors": 10,
+    "classes": [
+        { "id": 0, "word": "" },
+        { "id": 1, "word": "x" }
+    ],
+    "generate_shifts": false,
+    "funcs": ["exhaustive_last_parallel", "triplet_parallel"],
+    "description": "Test config for exhaustive search - uses exhaustive_last_parallel followed by triplet_parallel for convergence"
+}

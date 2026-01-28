@@ -256,3 +256,63 @@ set_tests_properties(test_simd_optimization PROPERTIES
     TIMEOUT 120
     LABELS "simd;performance"
 )
+
+# Test 10: Training functions - triplet_parallel
+# Tests the default triplet_parallel function
+add_test(
+    NAME test_func_triplet_parallel
+    COMMAND NNets -c ${CMAKE_SOURCE_DIR}/configs/test_funcs_triplet.json -t
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+set_tests_properties(test_func_triplet_parallel PROPERTIES
+    TIMEOUT 120
+    LABELS "training_funcs;triplet"
+)
+
+# Test 11: Training functions - exhaustive_full_parallel
+# Tests the exhaustive search function
+add_test(
+    NAME test_func_exhaustive_parallel
+    COMMAND NNets -c ${CMAKE_SOURCE_DIR}/configs/test_funcs_exhaustive.json -t
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+set_tests_properties(test_func_exhaustive_parallel PROPERTIES
+    TIMEOUT 180
+    LABELS "training_funcs;exhaustive"
+)
+
+# Test 12: Training functions - random_pair_ext_parallel
+# Tests the random pair generation function
+add_test(
+    NAME test_func_random_pair_parallel
+    COMMAND NNets -c ${CMAKE_SOURCE_DIR}/configs/test_funcs_random_pair.json -t
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+set_tests_properties(test_func_random_pair_parallel PROPERTIES
+    TIMEOUT 120
+    LABELS "training_funcs;random_pair"
+)
+
+# Test 13: Training functions - sequence of multiple functions
+# Tests using multiple functions in sequence with error checking after each
+add_test(
+    NAME test_func_sequence
+    COMMAND NNets -c ${CMAKE_SOURCE_DIR}/configs/test_funcs_sequence.json -t
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+set_tests_properties(test_func_sequence PROPERTIES
+    TIMEOUT 180
+    LABELS "training_funcs;sequence"
+)
+
+# Test 14: List available training functions
+# Tests the --list-funcs command
+add_test(
+    NAME test_list_funcs
+    COMMAND NNets --list-funcs
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+set_tests_properties(test_list_funcs PROPERTIES
+    TIMEOUT 10
+    LABELS "training_funcs;help"
+)

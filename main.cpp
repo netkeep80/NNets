@@ -266,6 +266,7 @@ void printUsage(const char* programName) {
 	cout << endl;
 	cout << "GENERAL OPTIONS:" << endl;
 	cout << "  -h, --help           Show this help message" << endl;
+	cout << "  --list-funcs         List available training functions" << endl;
 	cout << endl;
 	cout << "INTERRUPTION:" << endl;
 	cout << "  Press Ctrl+C during training to interrupt gracefully." << endl;
@@ -286,8 +287,11 @@ void printUsage(const char* programName) {
 	cout << "      { \"id\": 0, \"word\": \"\" }," << endl;
 	cout << "      { \"id\": 1, \"word\": \"time\" }" << endl;
 	cout << "    ]," << endl;
-	cout << "    \"generate_shifts\": true" << endl;
+	cout << "    \"generate_shifts\": true," << endl;
+	cout << "    \"funcs\": [\"triplet_parallel\"]  // Optional: specify training functions" << endl;
 	cout << "  }" << endl;
+	cout << endl;
+	cout << "Use --list-funcs to see all available training functions." << endl;
 }
 
 /**
@@ -413,6 +417,9 @@ int main(int argc, char* argv[])
 			UseSIMD = false;
 		} else if (arg == "-h" || arg == "--help") {
 			printUsage(argv[0]);
+			return 0;
+		} else if (arg == "--list-funcs") {
+			printAvailableLearningFuncs();
 			return 0;
 		}
 	}
@@ -705,17 +712,40 @@ int main(int argc, char* argv[])
 		// Обучаем распознавание текущего класса
 		if (class_er[classIndex] > er)
 		{
-			// Используем метод rndrod4_parallel - многопоточная генерация тройки нейронов
-			class_er[classIndex] = rndrod4_parallel();
+			// Если заданы функции обучения в конфиге - используем их последовательно
+			if (!g_trainingFuncs.empty()) {
+				// Вызываем все указанные функции в указанной последовательности
+				for (const auto& funcName : g_trainingFuncs) {
+					if (class_er[classIndex] <= er) break;  // Уже достигли нужной ошибки
 
-			// Сохраняем выходной нейрон для класса
-			NetOutput[classIndex] = Neirons - 1;
+					LearningFunc func = getLearningFunc(funcName);
+					if (func != nullptr) {
+						float newError = func();
+						if (newError < class_er[classIndex]) {
+							class_er[classIndex] = newError;
+							NetOutput[classIndex] = Neirons - 1;
+						}
+					} else {
+						cerr << "Warning: Unknown training function '" << funcName << "', skipping" << endl;
+					}
+				}
+			} else {
+				// По умолчанию: используем triplet_random_parallel (rndrod4_parallel)
+				class_er[classIndex] = triplet_random_parallel();
+				NetOutput[classIndex] = Neirons - 1;
+			}
 		}
 
 		cout << ", n" << NetOutput[classIndex] << " = " << class_er[classIndex] << endl;
 
 		if (++classIndex >= Classes)  // Переходим к следующему классу по кругу
 			classIndex = 0;
+
+		// Проверяем достижение лимита нейронов
+		if (Neirons >= MAX_NEURONS - 10) {  // Оставляем запас в 10 нейронов
+			cout << "\n[WARNING] Maximum neuron limit (" << MAX_NEURONS << ") nearly reached. Stopping training." << endl;
+			break;
+		}
 
 	} while (sum(class_er.data(), Classes) > Classes * er);
 
