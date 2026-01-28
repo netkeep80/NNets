@@ -1,214 +1,250 @@
-# Self-Structuring Neural Network
+# NNets — Самоструктурирующаяся нейронная сеть / Self-Structuring Neural Network
 
-This repository contains a C++ implementation of a self-structuring neural network that learns by adding new neurons and connections to its architecture. It operates on the principle of minimizing the error vector's length, with training occurring in three iterative phases:
+[English version below](#english-version)
 
-1. Random Neuron Addition: Randomly adds neurons to the network to avoid getting stuck in local minima.
-2. Pseudo-Random Neuron Addition: Adds neurons with partial search, exploring a more targeted space of potential connections.
-3. Optimal Neuron Addition: Finds the optimal neuron placement and connection configuration to minimize the error vector's length.
+---
 
-## Features
+## Русская версия
 
-• Dynamic Structure: The network automatically grows its architecture by adding neurons and connections based on learning requirements.
+### Описание
 
-• Error-Driven Learning: Training is guided by the minimization of the error vector's length, which represents the difference between the network's output and the desired target values.
+NNets — это реализация самоструктурирующейся нейронной сети на языке C++, которая автоматически формирует свою архитектуру в процессе обучения. Вместо заранее определённой структуры, сеть динамически добавляет новые нейроны и связи для минимизации ошибки классификации.
 
-• Iterative Training: The training process consists of three distinct phases, each contributing to the network's learning.
+### Ключевые особенности
 
-• C++ Implementation: The project is written in C++, providing performance and control over the underlying data structures.
+- **Динамическая структура**: Сеть автоматически растёт, добавляя нейроны по мере необходимости
+- **Обучение через генерацию**: Вместо корректировки весов создаются новые нейроны с оптимальными параметрами
+- **14 алгоритмов обучения**: Полный перебор, случайный поиск, генерация тройки нейронов
+- **Многопоточность**: Параллельные версии всех основных алгоритмов
+- **SIMD-оптимизации**: Поддержка AVX и SSE для ускорения вычислений
+- **Кроссплатформенность**: Linux, Windows, macOS
+- **Сохранение и загрузка моделей**: Формат JSON для переносимости
+- **Дообучение**: Возможность добавления новых классов к существующей модели
 
-• Extensible Design: The code is structured to allow users to customize the neuron operations, learning algorithms, and data representations.
+### Документация
 
-## Build
+- **[analysis.md](analysis.md)** — Подробный анализ текущего состояния проекта
+- **[plan.md](plan.md)** — План развития проекта
 
-### Using CMake (Recommended)
+### Быстрый старт
 
-CMake provides cross-platform build support for Linux, macOS, and Windows.
+#### Сборка
 
 ```bash
-# Configure the build
+# Конфигурация
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 
-# Build the project
+# Сборка
 cmake --build build --config Release
 ```
 
-The executable will be located in the `build` directory.
-
-### Using Visual Studio (Windows)
-
-Open `main.sln` in Visual Studio and build the solution.
-
-### Using g++ directly
+#### Обучение
 
 ```bash
-g++ -o NNets main.cpp
+# Обучение с конфигурацией по умолчанию
+./build/NNets
+
+# Обучение с кастомной конфигурацией и сохранением модели
+./build/NNets -c configs/default.json -s model.json
+
+# Обучение с автоматическим тестом
+./build/NNets -c configs/simple.json -s model.json -t
 ```
 
-## Usage
-
-The program supports several modes: **Training**, **Retraining**, **Inference**, and **Verification**.
-
-### Command Line Options
-
-```
-Usage: ./NNets [options]
-
-MODES:
-  Training mode (default): Train network and optionally save to file
-  Inference mode: Load trained network and classify inputs
-  Retraining mode: Load existing network and continue training with new data
-
-TRAINING OPTIONS:
-  -c, --config <file>  Load training configuration from JSON file
-  -s, --save <file>    Save trained network to JSON file after training
-  -t, --test           Run automated test after training (no interactive mode)
-  -b, --benchmark      Run benchmark to measure training speed
-
-RETRAINING OPTIONS:
-  -r, --retrain <file> Load existing network and continue training (retraining mode)
-                       Combines -l (load) with training mode. Requires -c for new data.
-                       New classes in config (without output_neuron) will be trained.
-
-INFERENCE OPTIONS:
-  -l, --load <file>    Load trained network from JSON file (inference mode)
-  -i, --input <text>   Classify single input text and exit (non-interactive)
-  --verify             Verify accuracy of loaded model on training config (-c required)
-
-PERFORMANCE OPTIONS:
-  -j, --threads <n>    Number of threads to use (0 = auto, default)
-  --single-thread      Disable multithreading (use single thread)
-
-GENERAL OPTIONS:
-  -h, --help           Show help message
-
-INTERRUPTION:
-  Press Ctrl+C during training to interrupt gracefully.
-  The network will be saved if -s is specified.
-  Training can be continued later with -r option.
-```
-
-### Training Mode
-
-Train a neural network from scratch using a configuration file:
+#### Использование обученной модели
 
 ```bash
-# Train with default configuration (built-in words: time, hour, main)
-./NNets
+# Интерактивный режим
+./build/NNets -l model.json
 
-# Train with custom configuration
-./NNets -c configs/default.json
+# Классификация одного текста
+./build/NNets -l model.json -i "time"
 
-# Train and save the network for later use
-./NNets -c configs/default.json -s model.json
-
-# Train with automated testing (no interactive mode)
-./NNets -c configs/default.json -s model.json -t
-
-# Benchmark training speed
-./NNets -c configs/default.json -b
+# Проверка точности
+./build/NNets -l model.json -c configs/test.json --verify
 ```
 
-### Inference Mode
-
-Load a pre-trained network and classify inputs:
+#### Дообучение
 
 ```bash
-# Interactive inference mode
-./NNets -l model.json
-
-# Classify a single text (non-interactive, for scripts/tests)
-./NNets -l model.json -i "time"
-./NNets -l model.json -i "yes"
+# Добавление новых классов к существующей модели
+./build/NNets -r model_v1.json -c configs/extended.json -s model_v2.json
 ```
 
-### Retraining Mode
+### Опции командной строки
 
-Continue training an existing network with new classes or additional training data:
+```
+РЕЖИМЫ РАБОТЫ:
+  Обучение (по умолчанию): Обучение сети с нуля
+  Инференс (-l): Использование обученной модели
+  Дообучение (-r): Добавление новых классов к модели
 
-```bash
-# Add new classes to an existing model
-# 1. First, train initial model with classes yes/no
-./NNets -c configs/simple.json -s model_v1.json
+ПАРАМЕТРЫ ОБУЧЕНИЯ:
+  -c, --config <файл>  Загрузить конфигурацию из JSON файла
+  -s, --save <файл>    Сохранить обученную модель в JSON файл
+  -t, --test           Запустить автоматический тест после обучения
+  -b, --benchmark      Измерить скорость обучения
 
-# 2. Create a new config with additional classes (e.g., adding "maybe")
-# 3. Retrain the model with new data
-./NNets -r model_v1.json -c configs/extended.json -s model_v2.json
+ПАРАМЕТРЫ ИНФЕРЕНСА:
+  -l, --load <файл>    Загрузить модель для классификации
+  -i, --input <текст>  Классифицировать один текст и выйти
+  --verify             Проверить точность модели на данных из конфига
+
+ПАРАМЕТРЫ ПРОИЗВОДИТЕЛЬНОСТИ:
+  -j, --threads <n>    Количество потоков (0 = авто)
+  --single-thread      Отключить многопоточность
+  --no-simd            Отключить SIMD-оптимизации
+
+ДРУГОЕ:
+  -h, --help           Показать справку
+  --list-funcs         Показать список функций обучения
 ```
 
-Retraining automatically detects which classes are already trained (have `output_neuron`) and only trains new classes. This is useful for:
-- Adding new recognition classes without retraining from scratch
-- Continuing interrupted training sessions
-- Incrementally improving the model
-
-### Verification Mode
-
-Check the accuracy of a trained model on test data:
-
-```bash
-# Verify model accuracy on training data
-./NNets -l model.json -c configs/test.json --verify
-```
-
-This mode loads the trained network and tests it against all samples in the configuration file, reporting accuracy statistics.
-
-### Training Interruption
-
-Training can be interrupted at any time by pressing Ctrl+C:
-- The first Ctrl+C requests graceful interruption (finishes current iteration)
-- The second Ctrl+C forces immediate exit
-- If `-s` option is specified, the network state is saved automatically
-- Training can be continued later using the `-r` (retrain) option
-
-```bash
-# Start long training with auto-save
-./NNets -c configs/large.json -s checkpoint.json
-
-# Press Ctrl+C to interrupt...
-# Network saved to checkpoint.json
-
-# Continue training later
-./NNets -r checkpoint.json -c configs/large.json -s final_model.json
-```
-
-### Training Configuration Format
-
-Training configurations are JSON files that define the classes and training images:
+### Формат конфигурации
 
 ```json
 {
-  "description": "Example configuration",
+  "description": "Описание конфигурации",
   "receptors": 20,
   "classes": [
     { "id": 0, "word": "" },
     { "id": 1, "word": "yes" },
     { "id": 2, "word": "no" }
   ],
-  "generate_shifts": true
+  "generate_shifts": true,
+  "funcs": ["triplet_parallel"]
 }
 ```
 
-Configuration options:
-- `receptors`: Number of neural network inputs (text length)
-- `classes`: Array of classes with unique `id` and `word` to recognize
-- `generate_shifts`: If `true`, generates shifted variants of each word for robust recognition
-- `description`: Optional description of the configuration
+### Тестирование
 
-For advanced use, you can specify training images directly:
+```bash
+# Запуск всех тестов
+ctest --test-dir build -C Release
+
+# Запуск с подробным выводом
+ctest --test-dir build -C Release --output-on-failure
+```
+
+### Лицензия
+
+Проект распространяется под лицензией Unlicense. Вы можете использовать, модифицировать и распространять код без ограничений.
+
+---
+
+## English Version
+
+### Description
+
+NNets is a C++ implementation of a self-structuring neural network that automatically builds its architecture during training. Instead of a predefined structure, the network dynamically adds new neurons and connections to minimize classification error.
+
+### Key Features
+
+- **Dynamic Structure**: The network automatically grows by adding neurons as needed
+- **Learning through Generation**: Instead of adjusting weights, new neurons with optimal parameters are created
+- **14 Training Algorithms**: Exhaustive search, random search, triplet neuron generation
+- **Multithreading**: Parallel versions of all main algorithms
+- **SIMD Optimizations**: AVX and SSE support for computational acceleration
+- **Cross-platform**: Linux, Windows, macOS
+- **Model Save/Load**: JSON format for portability
+- **Retraining**: Ability to add new classes to an existing model
+
+### Documentation
+
+- **[analysis.md](analysis.md)** — Detailed analysis of the current project state (in Russian)
+- **[plan.md](plan.md)** — Project development plan (in Russian)
+
+### Quick Start
+
+#### Build
+
+```bash
+# Configure
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+# Build
+cmake --build build --config Release
+```
+
+#### Training
+
+```bash
+# Train with default configuration
+./build/NNets
+
+# Train with custom config and save model
+./build/NNets -c configs/default.json -s model.json
+
+# Train with automated test
+./build/NNets -c configs/simple.json -s model.json -t
+```
+
+#### Using a Trained Model
+
+```bash
+# Interactive mode
+./build/NNets -l model.json
+
+# Classify single text
+./build/NNets -l model.json -i "time"
+
+# Verify accuracy
+./build/NNets -l model.json -c configs/test.json --verify
+```
+
+#### Retraining
+
+```bash
+# Add new classes to an existing model
+./build/NNets -r model_v1.json -c configs/extended.json -s model_v2.json
+```
+
+### Command Line Options
+
+```
+MODES:
+  Training (default): Train network from scratch
+  Inference (-l): Use trained model
+  Retraining (-r): Add new classes to model
+
+TRAINING OPTIONS:
+  -c, --config <file>  Load configuration from JSON file
+  -s, --save <file>    Save trained model to JSON file
+  -t, --test           Run automated test after training
+  -b, --benchmark      Measure training speed
+
+INFERENCE OPTIONS:
+  -l, --load <file>    Load model for classification
+  -i, --input <text>   Classify single text and exit
+  --verify             Verify model accuracy on config data
+
+PERFORMANCE OPTIONS:
+  -j, --threads <n>    Number of threads (0 = auto)
+  --single-thread      Disable multithreading
+  --no-simd            Disable SIMD optimizations
+
+OTHER:
+  -h, --help           Show help message
+  --list-funcs         List available training functions
+```
+
+### Configuration Format
 
 ```json
 {
-  "receptors": 12,
-  "images": [
-    { "word": "yes         ", "id": 1 },
-    { "word": " yes        ", "id": 1 },
-    { "word": "no          ", "id": 2 }
-  ]
+  "description": "Configuration description",
+  "receptors": 20,
+  "classes": [
+    { "id": 0, "word": "" },
+    { "id": 1, "word": "yes" },
+    { "id": 2, "word": "no" }
+  ],
+  "generate_shifts": true,
+  "funcs": ["triplet_parallel"]
 }
 ```
 
 ### Saved Network Format
-
-Trained networks are saved in JSON format:
 
 ```json
 {
@@ -221,8 +257,7 @@ Trained networks are saved in JSON format:
   "basis": [0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, -0.125, -0.25, -0.5, -1.0, -2.0, -4.0, -8.0],
   "classes": [
     { "id": 0, "name": "", "output_neuron": 109 },
-    { "id": 1, "name": "yes", "output_neuron": 298 },
-    { "id": 2, "name": "no", "output_neuron": 307 }
+    { "id": 1, "name": "yes", "output_neuron": 298 }
   ],
   "neurons": [
     { "i": 12, "j": 13, "op": 3 },
@@ -231,13 +266,7 @@ Trained networks are saved in JSON format:
 }
 ```
 
-Network structure:
-- `receptors`: Number of text character inputs
-- `basis`: Base values used for neuron operations
-- `classes`: Classes the network can recognize, with output neuron indices
-- `neurons`: Network structure (neuron IDs are implicit as `inputs + array_index`)
-
-## Example
+### Example Output
 
 ```
 Input word: time
@@ -252,14 +281,44 @@ Input word: hour
 1% -
 ```
 
-## License
+### Training Algorithms
+
+The network supports multiple training algorithms configurable via the `funcs` parameter:
+
+**Exhaustive Search** (deterministic):
+- `exhaustive_full` / `exhaustive_full_parallel` — Complete enumeration of all neuron pairs
+- `exhaustive_last` / `exhaustive_last_parallel` — Combine with the last created neuron
+- `combine_old_new` / `combine_old_new_parallel` — Combine old and new neurons
+
+**Random Search**:
+- `random_single` — Generate a single random neuron
+- `random_from_inputs` — Random generation based on inputs
+- `random_pair_opt` / `random_pair_opt_parallel` — Optimized pair generation
+- `random_pair_ext` / `random_pair_ext_parallel` — Extended pair generation
+
+**Triplet Generation** (recommended):
+- `triplet` / `triplet_parallel` — Create three connected neurons (A, B, C)
+
+Default: `triplet_parallel`
+
+### Testing
+
+```bash
+# Run all tests
+ctest --test-dir build -C Release
+
+# Run with verbose output
+ctest --test-dir build -C Release --output-on-failure
+```
+
+### License
 
 This project is licensed under the Unlicense. You are free to use, modify, and distribute this software for any purpose without any restrictions.
 
-## Contributing
+### Contributing
 
 Contributions are welcome! If you have any suggestions, bug reports, or feature requests, please feel free to open an issue or submit a pull request.
 
-## Disclaimer
+### Disclaimer
 
-This project is for educational and experimental purposes. It is not intended for production use or any critical applications. The network's accuracy and performance may vary depending on the dataset and learning parameters.
+This project is for educational and experimental purposes. It is not intended for production use or critical applications. The network's accuracy and performance may vary depending on the dataset and learning parameters.
