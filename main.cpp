@@ -589,7 +589,16 @@ int main(int argc, char* argv[])
 		}
 	}
 
-	cout << "Random seed: " << rand() << endl;
+	// Инициализация генератора случайных чисел
+	// В тестовом режиме используем фиксированный seed для воспроизводимости
+	unsigned int randomSeed;
+	if (testMode) {
+		randomSeed = 42;  // Фиксированный seed для детерминированных тестов
+	} else {
+		randomSeed = (unsigned int)time(nullptr);
+	}
+	srand(randomSeed);
+	cout << "Random seed: " << randomSeed << endl;
 
 	// Настройка многопоточности
 	if (UseMultithreading) {
