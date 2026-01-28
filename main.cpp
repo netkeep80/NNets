@@ -27,6 +27,7 @@
 #include <numeric>
 #include <csignal>
 #include <nlohmann/json.hpp>
+#include "simd_ops.h"
 
 using namespace std;
 using json = nlohmann::json;
@@ -99,28 +100,32 @@ string g_autoSavePath = "";                           // Путь для авт�
 
 // ============================================================================
 // Операции нейронов - элементарные математические действия
+// SIMD-оптимизированные версии для ускорения вычислений
 // ============================================================================
 
 typedef void(__fastcall *oper)(float*, const float*, const float*, const int);
 
-// Сумма
+// Флаг для включения/выключения SIMD во время выполнения
+bool UseSIMD = true;
+
+// Сумма - SIMD оптимизированная версия
 void __fastcall op_1(float* r, const float* z1, const float* z2, const int size) {
-	for (int i = size; i > 0; i--, r++, z1++, z2++) *r = *z1 + *z2;
+	op_add_simd(r, z1, z2, size);
 }
 
-// Разность (z1 - z2)
+// Разность (z1 - z2) - SIMD оптимизированная версия
 void __fastcall op_2(float* r, const float* z1, const float* z2, const int size) {
-	for (int i = size; i > 0; i--, r++, z1++, z2++) *r = *z1 - *z2;
+	op_sub_simd(r, z1, z2, size);
 }
 
-// Разность (z2 - z1)
+// Разность (z2 - z1) - SIMD оптимизированная версия
 void __fastcall op_3(float* r, const float* z1, const float* z2, const int size) {
-	for (int i = size; i > 0; i--, r++, z1++, z2++) *r = *z2 - *z1;
+	op_rsub_simd(r, z1, z2, size);
 }
 
-// Произведение
+// Произведение - SIMD оптимизированная версия
 void __fastcall op_4(float* r, const float* z1, const float* z2, const int size) {
-	for (int i = size; i > 0; i--, r++, z1++, z2++) *r = *z1 * *z2;
+	op_mul_simd(r, z1, z2, size);
 }
 
 // Деление (z1 / z2)
@@ -257,6 +262,7 @@ void printUsage(const char* programName) {
 	cout << "PERFORMANCE OPTIONS:" << endl;
 	cout << "  -j, --threads <n>    Number of threads to use (0 = auto, default)" << endl;
 	cout << "  --single-thread      Disable multithreading (use single thread)" << endl;
+	cout << "  --no-simd            Disable SIMD optimizations (use scalar operations)" << endl;
 	cout << endl;
 	cout << "GENERAL OPTIONS:" << endl;
 	cout << "  -h, --help           Show this help message" << endl;
@@ -403,6 +409,8 @@ int main(int argc, char* argv[])
 			NumThreads = atoi(argv[++i]);
 		} else if (arg == "--single-thread") {
 			UseMultithreading = false;
+		} else if (arg == "--no-simd") {
+			UseSIMD = false;
 		} else if (arg == "-h" || arg == "--help") {
 			printUsage(argv[0]);
 			return 0;
@@ -588,6 +596,9 @@ int main(int argc, char* argv[])
 		cout << "Multithreading: disabled (single-threaded mode)" << endl;
 	}
 
+	// Вывод информации о SIMD
+	cout << "SIMD: " << getSIMDInfo() << (UseSIMD ? "" : " (disabled via --no-simd)") << endl;
+
 	// Вычисляем производные значения после загрузки конфигурации
 	Images = const_words.size();
 	Inputs = Receptors + base_size;
@@ -761,6 +772,7 @@ int main(int argc, char* argv[])
 		cout << "  Images: " << Images << endl;
 		cout << "  Neurons created: " << (Neirons - Inputs) << endl;
 		cout << "  Threads: " << NumThreads << (UseMultithreading ? " (multithreaded)" : " (single-threaded)") << endl;
+		cout << "  SIMD: " << getSIMDInfo() << (UseSIMD ? " (enabled)" : " (disabled)") << endl;
 		cout << "Timing:" << endl;
 		cout << "  Training time: " << trainingDuration.count() << " ms" << endl;
 		cout << "  Training iterations: " << trainingIterations << endl;
