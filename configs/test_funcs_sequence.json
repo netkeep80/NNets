@@ -1,8 +1,8 @@
 {
-    "receptors": 15,
+    "receptors": 10,
     "classes": [
         { "id": 0, "word": "" },
-        { "id": 1, "word": "dog" }
+        { "id": 1, "word": "x" }
     ],
     "generate_shifts": false,
     "funcs": ["random_from_inputs", "random_pair_opt_parallel", "triplet_parallel"],
